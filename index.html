@@ -9,6 +9,10 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cause&family=Pirata+One&display=swap" rel="stylesheet">
 
+    <!-- LIBRERIE AGGIUNTE PER P2P E QR CODE -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs/qrcode.min.js"></script>
+
     <style>
         body {
             background-color: #f0e6d2; display: flex; flex-direction: column; 
@@ -80,6 +84,27 @@
         .btn-large:hover { background-color: #2ecc71; transform: translateY(-3px); }
         .btn-large:active { transform: translateY(2px) scale(0.95); }
 
+        #host-modal {
+            text-align: center;
+            background: rgba(10, 40, 70, 0.98);
+            padding: 40px;
+            border-radius: 20px;
+            border: 2px solid #f1c40f;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+        }
+        #qr-code {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 25px auto;
+            width: 200px;
+            height: 200px;
+        }
+        #join-link {
+            background: rgba(0,0,0,0.3);
+            padding: 10px 15px;
+            border-radius: 8px; word-wrap: break-word;
+        }
         .coord-card {
             background-color: #ecf0f1; color: #c0392b; padding: 50px 80px; border-radius: 15px; font-size: 60px;
             font-weight: bold; box-shadow: 0 15px 40px rgba(0,0,0,0.6); margin-bottom: 30px; border: 8px solid #023e8a;
@@ -705,18 +730,26 @@
     <div id="start-overlay" class="overlay">
         <h1 id="start-title">Esploratori e Combattenti dei Mari</h1>
         <div id="initial-start-screen">
-            <button id="shark-btn" class="btn-large">Salpa squalo capoccione</button>
+            <button id="host-game-btn" class="btn-large">Crea Partita</button>
+            <p style="margin-top: 30px; font-size: 16px;">Per unirti a una partita, apri il link o scansiona il QR code fornito dall'host.</p>
         </div>
         <div id="player-select-screen" style="display: none; text-align: center;">
             <h2 style="font-size: 45px; margin-bottom: 30px; color: #f1c40f; font-family: 'Pirata One', cursive; letter-spacing: 2px;">Seleziona Giocatori</h2>
             <div style="display: flex; gap: 30px; justify-content: center;">
-                <button class="btn-large btn-blue" onclick="startGame(2)">2 Giocatori</button>
-                <button class="btn-large btn-blue" onclick="startGame(3)">3 Giocatori</button>
-                <button class="btn-large btn-blue" onclick="startGame(4)">4 Giocatori</button>
+                <button class="btn-large btn-blue" onclick="initializeHost(2)">2 Giocatori</button>
+                <button class="btn-large btn-blue" onclick="initializeHost(3)">3 Giocatori</button>
+                <button class="btn-large btn-blue" onclick="initializeHost(4)">4 Giocatori</button>
             </div>
             <div style="margin-top: 40px;">
                 <button class="btn-large" style="background-color: #7f8c8d;" onclick="startTestGame()">Testing</button>
             </div>
+        </div>
+        <div id="host-modal" style="display: none;">
+            <h2 style="font-size: 36px; color: #f1c40f; margin-top:0;">Condividi per giocare!</h2>
+            <p>Gli altri giocatori devono scansionare questo QR code o usare il link.</p>
+            <div id="qr-code"></div>
+            <p id="join-link"></p>
+            <h3 id="player-counter" style="color: #2ecc71; font-size: 24px;">In attesa di giocatori... (1/2)</h3>
         </div>
     </div>
 
@@ -942,6 +975,21 @@
         }
 
         // --- 1. VARIABILI GLOBALI E STATO ---
+        // Variabili P2P
+        let peer = null;
+        let hostId = null;
+        let playerConns = [];
+        let myPeerId = null;
+        let isHost = false;
+        let expectedPlayerCount = 0;
+
+        // Funzione per ottenere lo stato completo del gioco
+        function getFullGameState() {
+            // Raccoglie tutte le variabili di stato in un unico oggetto
+            return { players, pvpOpponentIdx, playerColors, playerBgs, currentPlayerIdx, gameState, isAnimating, currentRound, hasPerformedActionThisTurn, hasBoughtConsumableThisTurn, isWaitingExploratoryReroll, previousPlayerIdx, pawns, pawnRenderOrder, inventories, globalTokenPool, playerStats, baseConsumablesData, consumablesDeck, playerConsumables, usedConsumables, burnedConsumables, movesLeft, activeCellId, setupPlayerIdx, coordinateDeck, initialCoordinateDeck, tileDeck, activeChests, baseEventsData, eventDeck, eventHistory, currentEvent, combatState, currentDice, pendingRerollCardId, combatSuccessBonus, pendingFours, boardState };
+        }
+
+
         let players = []; 
         let pvpOpponentIdx = -1;
         const playerColors = ['#d81b60', '#009688', '#f57c00', '#6a1b9a']; // Rosa, Turchese, Arancione scuro, Viola scuro
@@ -3077,12 +3125,12 @@
             }, 4500);
         }
 
-        document.getElementById('shark-btn').addEventListener('click', () => {
+        document.getElementById('host-game-btn').addEventListener('click', () => {
             document.getElementById('initial-start-screen').style.display = 'none';
             document.getElementById('player-select-screen').style.display = 'block';
         });
 
-        window.startGame = function(playerCount) {
+        function startGame(playerCount) {
             document.getElementById('game-info-bar').style.display = 'flex';
 
             // 1. Inizializza gli array e gli oggetti dei giocatori
@@ -3096,16 +3144,21 @@
                 pawnRenderOrder.push(i);
             }
 
-            // 2. Nasconde l'overlay e avvia il gioco
-            document.getElementById('start-overlay').style.opacity = '0';
-            setTimeout(() => { 
-                document.getElementById('start-overlay').style.display = 'none'; 
-                initBoards(); 
-                updateInventoryUI(); 
-                initEventDeck(); 
-                initConsumablesDeck(); 
-                prepareAndStartSetup(); 
-            }, 500);
+            // 2. Se è l'host, avvia la logica di gioco. I client riceveranno lo stato.
+            if (isHost) {
+                // Nasconde l'overlay e avvia il gioco
+                document.getElementById('start-overlay').style.opacity = '0';
+                setTimeout(() => { 
+                    document.getElementById('start-overlay').style.display = 'none'; 
+                    initBoards(); 
+                    updateInventoryUI(); 
+                    initEventDeck(); 
+                    initConsumablesDeck(); 
+                    prepareAndStartSetup();
+                    // Trasmette lo stato iniziale a tutti
+                    broadcastGameState();
+                }, 500);
+            }
         }
 
         function startTestGame() {
@@ -3188,11 +3241,22 @@
             if (gameState === 'move' || gameState === 'build') {
                 if (playerConsumables[currentPlayerIdx].length > 3) {
                     alert("ATTENZIONE: Hai troppe carte consumabili in mano (massimo 3). Devi usarne o bruciarne qualcuna prima di terminare.");
+                    renderConsumablesHand(); // Mostra l'avviso
                     return;
                 }
             }
-            
-            if (gameState === 'roll') rollDice(); 
+
+            if (isHost) {
+                // L'host esegue l'azione direttamente
+                if (gameState === 'roll') rollDice(); 
+                else if ((gameState === 'move' || gameState === 'build') && !activeCellId) {
+                    startEventPhase();
+                }
+            } else {
+                // Il client invia la richiesta di azione all'host
+                sendData({ type: 'action', payload: { action: 'end_exploration' } });
+            }
+            if (gameState === 'roll') { isHost ? rollDice() : sendData({ type: 'action', payload: { action: 'roll' } }); }
             else if ((gameState === 'move' || gameState === 'build') && !activeCellId) {
                 startEventPhase();
             }
@@ -3204,6 +3268,7 @@
                 boardState[activeCellId].locked = true; boardState[activeCellId].poly.classList.remove('rotator-area');
                 document.querySelector(`.hex[data-cell-id='${activeCellId}']`).classList.remove('blink-hex');
                 activeCellId = null; setupPlayerIdx++; showCoordinateExtraction();
+                broadcastGameState(); // Sincronizza dopo il piazzamento del porto
             } else if (gameState === 'build') {
                 if (!activeCellId) return;
                 
@@ -3222,7 +3287,10 @@
                 
                 if (playerStats[currentPlayerIdx].exp < 12) playerStats[currentPlayerIdx].exp++;
 
-                updateInventoryUI(); fillDraftPool(); gameState = 'move'; updateTurnUI();
+                updateInventoryUI(); 
+                fillDraftPool(); 
+                gameState = 'move'; 
+                updateTurnUI();
             }
         });
 
@@ -3247,6 +3315,7 @@
                 gameState = 'move'; 
                 isAnimating = false;
                 updateTurnUI();
+                if(isHost) broadcastGameState();
             }, 1200);
         }
 
@@ -3527,6 +3596,7 @@
                         movesLeft -= data.cost; 
                         
                         for (let step of data.path) {
+                            if (isHost) { // Solo l'host modifica lo stato
                             if (step.node === 'C') {
                                 const state = boardState[step.cellId];
                                 if (state && state.object) {
@@ -3538,12 +3608,14 @@
                                     }
                                 }
                             }
+                            }
                         }
 
                         gameState = 'move'; 
                         isAnimating = false; 
                         updateInventoryUI();
                         updateTurnUI(); 
+                        if(isHost) broadcastGameState();
                     };
                     pawnsLayer.appendChild(hb);
                 });
@@ -3818,7 +3890,9 @@
             let itemNode = null; let placedObject = null; 
             
             if (!isSetupPort && config.deadEndDir !== null) { 
-                placedObject = drawTokenFromPool(['key_red', 'key_blue', '💣', '🚢', 'heart_upgrade']); 
+                if (isHost) { // Solo l'host pesca dal pool
+                    placedObject = drawTokenFromPool(['key_red', 'key_blue', '💣', '🚢', 'heart_upgrade']); 
+                }
                 if (placedObject) {
                     itemNode = createItemNodeNS(cx, cy, placedObject); 
                     cardGroup.appendChild(itemNode); 
@@ -3828,6 +3902,9 @@
             let currentRot = initialRotSteps * 60; let rotSteps = initialRotSteps; rotator.style.transform = `rotate(${currentRot}deg)`;
             boardState[cellId] = { cardId: parseInt(cardId), rotSteps: rotSteps, poly: poly, svgGroup: cardGroup, locked: false, cx: cx, cy: cy, object: placedObject, itemNode: itemNode };
             updateItemPos(boardState[cellId], rotSteps); validateAllBoard();
+
+            // Se l'host piazza una carta, lo comunica
+            if (isHost) broadcastGameState();
 
             cardGroup.addEventListener('mousedown', (e) => {
                 if (boardState[cellId].locked) return; e.preventDefault(); let startX = e.clientX; let baseRot = currentRot; let hasMoved = false;
@@ -3846,10 +3923,121 @@
                     }
                     currentRot = Math.round((baseRot + (ev.clientX - startX)) / 60) * 60; rotator.style.transition = 'transform 0.15s ease-out'; rotator.style.transform = `rotate(${currentRot}deg)`; setTimeout(() => rotator.style.transition = '', 150);
                     rotSteps = Math.round(currentRot / 60) % 6; if (rotSteps < 0) rotSteps += 6; boardState[cellId].rotSteps = rotSteps; updateItemPos(boardState[cellId], rotSteps); validateAllBoard();
+                    if(isHost) broadcastGameState();
                 };
                 document.addEventListener('mousemove', onMouseMove); document.addEventListener('mouseup', onMouseUp);
             });
         }
+
+        // --- LOGICA P2P ---
+
+        function initializeHost(playerCount) {
+            isHost = true;
+            expectedPlayerCount = playerCount;
+            document.getElementById('player-select-screen').style.display = 'none';
+            document.getElementById('host-modal').style.display = 'block';
+
+            peer = new Peer();
+            peer.on('open', (id) => {
+                myPeerId = id;
+                const joinURL = `${window.location.href.split('?')[0]}?host=${id}`;
+                document.getElementById('join-link').textContent = joinURL;
+                new QRCode(document.getElementById("qr-code"), {
+                    text: joinURL,
+                    width: 200,
+                    height: 200,
+                });
+                updatePlayerCounter();
+            });
+
+            peer.on('connection', (conn) => {
+                playerConns.push(conn);
+                updatePlayerCounter();
+                conn.on('data', (data) => handleDataReceived(data, conn.peer));
+
+                if (playerConns.length === expectedPlayerCount - 1) {
+                    // Tutti connessi, avvia il gioco
+                    startGame(expectedPlayerCount);
+                }
+            });
+        }
+
+        function joinGame(hostId) {
+            isHost = false;
+            document.getElementById('initial-start-screen').innerHTML = `<h2>Connessione all'host...</h2>`;
+            peer = new Peer();
+            peer.on('open', (id) => {
+                myPeerId = id;
+                let conn = peer.connect(hostId);
+                conn.on('open', () => {
+                    playerConns.push(conn);
+                    document.getElementById('initial-start-screen').innerHTML = `<h2>Connesso! In attesa che l'host avvii la partita...</h2>`;
+                });
+                conn.on('data', (data) => handleDataReceived(data, conn.peer));
+            });
+        }
+
+        function broadcastGameState() {
+            if (!isHost) return;
+            const state = getFullGameState();
+            const dataToSend = { type: 'state_update', payload: state };
+            playerConns.forEach(conn => conn.send(dataToSend));
+        }
+
+        function sendData(data) {
+            playerConns.forEach(conn => conn.send(data));
+        }
+
+        function handleDataReceived(data, fromPeerId) {
+            if (data.type === 'state_update' && !isHost) {
+                // Un client riceve un aggiornamento completo dello stato
+                const state = data.payload;
+                // Sovrascrive brutalmente lo stato locale
+                Object.assign(window, state);
+                
+                // Nasconde l'overlay di avvio se è la prima sincronizzazione
+                const startOverlay = document.getElementById('start-overlay');
+                if (startOverlay.style.display !== 'none') {
+                    startOverlay.style.opacity = '0';
+                    setTimeout(() => { startOverlay.style.display = 'none'; }, 500);
+                }
+
+                // Forza un re-render completo dell'UI
+                initBoards(); // Ricrea le plance con i dati aggiornati
+                updateInventoryUI();
+                updateTurnUI();
+                renderPawnsAndHitboxes();
+                fillDraftPool();
+                document.getElementById('deck-count').textContent = tileDeck.length;
+            } else if (data.type === 'action' && isHost) {
+                // L'host riceve una richiesta di azione da un client
+                const { action, params } = data.payload;
+                // QUI L'HOST DEVE VALIDARE E APPLICARE L'AZIONE
+                // Esempio:
+                if (action === 'roll') {
+                    rollDice();
+                }
+                // Aggiungere qui la logica per altre azioni...
+
+                // Dopo ogni azione, l'host trasmette il nuovo stato a tutti
+                broadcastGameState();
+            }
+        }
+
+        function updatePlayerCounter() {
+            document.getElementById('player-counter').textContent = `In attesa di giocatori... (${playerConns.length + 1}/${expectedPlayerCount})`;
+        }
+
+        // --- INIZIALIZZAZIONE AL CARICAMENTO DELLA PAGINA ---
+        window.addEventListener('load', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            hostId = urlParams.get('host');
+            if (hostId) {
+                // Se c'è un ID host nell'URL, prova a unirti
+                joinGame(hostId);
+            }
+            // Altrimenti, mostra la schermata iniziale per creare una partita
+        });
     </script>
 </body>
 </html>
