@@ -4048,43 +4048,50 @@
 
         // --- LOGICA P2P ---
 
+    let clientConnectionCounter = 1;
+
         function initializeHost(playerCount) {
-            isHost = true;
-            expectedPlayerCount = playerCount;
-            document.getElementById('player-select-screen').style.display = 'none';
-            document.getElementById('host-modal').style.display = 'block';
+    isHost = true;
+    expectedPlayerCount = playerCount;
+    document.getElementById('player-select-screen').style.display = 'none';
+    document.getElementById('host-modal').style.display = 'block';
 
-            peer = new Peer();
-            peer.on('open', (id) => {
-                myPeerId = id;
-                const joinURL = `${window.location.href.split('?')[0]}?host=${id}`;
-                document.getElementById('join-link').textContent = joinURL;
-                new QRCode(document.getElementById("qr-code"), {
-                    text: joinURL,
-                    width: 200,
-                    height: 200,
-                });
+    peer = new Peer();
+    peer.on('open', (id) => {
+        myPeerId = id;
+        const joinURL = `${window.location.href.split('?')[0]}?host=${id}`;
+        document.getElementById('join-link').textContent = joinURL;
+        new QRCode(document.getElementById("qr-code"), {
+            text: joinURL,
+            width: 200,
+            height: 200,
+        });
+        updatePlayerCounter();
+    });
+
+    peer.on('connection', (conn) => {
+        // Usa il contatore invece di playerConns.length per evitare collisioni
+        const playerIndex = clientConnectionCounter++; 
+        const newPlayer = { conn: conn, playerIndex: playerIndex };
+        
+        conn.on('open', () => {
+            playerConns.push(newPlayer);
+            
+            // Un piccolo ritardo garantisce che il canale WebRTC sia pronto a ricevere
+            setTimeout(() => {
+                conn.send({ type: 'assign_player', payload: { playerIndex: playerIndex } });
+
+                // Serializza in JSON per bypassare i limiti di PeerJS
+                const state = getFullGameState();
+                conn.send({ type: 'state_update', payload: JSON.stringify(state) });
+
                 updatePlayerCounter();
-            });
+            }, 200);
+        });
 
-            peer.on('connection', (conn) => {
-                const playerIndex = playerConns.length + 1;
-                const newPlayer = { conn: conn, playerIndex: playerIndex };
-                
-                conn.on('open', () => {
-                    playerConns.push(newPlayer);
-                    conn.send({ type: 'assign_player', payload: { playerIndex: playerIndex } });
-
-                    // Invia immediatamente lo stato di gioco attuale al nuovo giocatore
-                    const state = getFullGameState();
-                    conn.send({ type: 'state_update', payload: state });
-
-                    updatePlayerCounter();
-                });
-
-                conn.on('data', (data) => handleDataReceived(data, conn.peer));
-            });
-        }
+        conn.on('data', (data) => handleDataReceived(data, conn.peer));
+    });
+}
 
         function joinGame(hostId) {
             isHost = false;
@@ -4102,11 +4109,17 @@
         }
 
         function broadcastGameState() {
-            if (!isHost) return;
-            const state = getFullGameState();
-            const dataToSend = { type: 'state_update', payload: state };
-            playerConns.forEach(p => p.conn.send(dataToSend));
-        }
+    if (!isHost) return;
+    const state = getFullGameState();
+    try {
+        // Forza la serializzazione in stringa
+        const serializedState = JSON.stringify(state);
+        const dataToSend = { type: 'state_update', payload: serializedState };
+        playerConns.forEach(p => p.conn.send(dataToSend));
+    } catch (e) {
+        console.error("Errore durante la serializzazione dello stato di gioco:", e);
+    }
+}
 
         function sendData(data) {
             playerConns.forEach(p => p.conn.send(data));
@@ -4190,69 +4203,77 @@
         }
 
         function handleDataReceived(data, fromPeerId) {
-            if (data.type === 'assign_player' && !isHost) {
-                myPlayerIndex = data.payload.playerIndex;
-                const pConn = playerConns.find(p => p.conn.peer === fromPeerId);
-                if (pConn) pConn.playerIndex = myPlayerIndex;
-                // Una volta che sappiamo chi siamo, proviamo a renderizzare l'UI
-                // nel caso avessimo già ricevuto uno stato prima dell'assegnazione.
-                if (players.length > 0) {
-                    if (document.getElementById('client-controller-overlay').style.display === 'none') {
-                        setupClientUI();
-                    }
-                    renderClientUI();
-                }
+    if (data.type === 'assign_player' && !isHost) {
+        myPlayerIndex = data.payload.playerIndex;
+        const pConn = playerConns.find(p => p.conn.peer === fromPeerId);
+        if (pConn) pConn.playerIndex = myPlayerIndex;
+        
+        if (players.length > 0) {
+            if (document.getElementById('client-controller-overlay').style.display === 'none') {
+                setupClientUI();
             }
-            else if (data.type === 'state_update' && !isHost) {
-                if (document.getElementById('client-controller-overlay').style.display === 'none') {
-                    setupClientUI();
-                }
-                // Assegnamo manualmente tutte le parti necessarie dello stato al client.
-                const newState = data.payload;
-                players = newState.players;
-                pvpOpponentIdx = newState.pvpOpponentIdx;
-                playerColors = newState.playerColors;
-                playerBgs = newState.playerBgs;
-                currentPlayerIdx = newState.currentPlayerIdx;
-                gameState = newState.gameState;
-                isAnimating = newState.isAnimating;
-                currentRound = newState.currentRound;
-                hasPerformedActionThisTurn = newState.hasPerformedActionThisTurn;
-                hasBoughtConsumableThisTurn = newState.hasBoughtConsumableThisTurn;
-                isWaitingExploratoryReroll = newState.isWaitingExploratoryReroll;
-                previousPlayerIdx = newState.previousPlayerIdx;
-                pawns = newState.pawns;
-                pawnRenderOrder = newState.pawnRenderOrder;
-                inventories = newState.inventories;
-                globalTokenPool = newState.globalTokenPool;
-                playerStats = newState.playerStats;
-                consumablesDeck = newState.consumablesDeck;
-                playerConsumables = newState.playerConsumables;
-                usedConsumables = newState.usedConsumables;
-                burnedConsumables = newState.burnedConsumables;
-                movesLeft = newState.movesLeft;
-                activeCellId = newState.activeCellId;
-                combatState = newState.combatState;
+            renderClientUI();
+        }
+    }
+    else if (data.type === 'state_update' && !isHost) {
+        if (document.getElementById('client-controller-overlay').style.display === 'none') {
+            setupClientUI();
+        }
+        
+        // Decodifica il JSON ricevuto
+        let newState = data.payload;
+        if (typeof newState === 'string') {
+            try {
+                newState = JSON.parse(newState);
+            } catch (e) {
+                console.error("Errore nel parsing dello stato:", e);
+                return;
+            }
+        }
 
-                // Aggiungi le variabili di stato mancanti per una sincronizzazione completa
-                baseConsumablesData = newState.baseConsumablesData;
-                setupPlayerIdx = newState.setupPlayerIdx;
-                coordinateDeck = newState.coordinateDeck;
-                initialCoordinateDeck = newState.initialCoordinateDeck;
-                tileDeck = newState.tileDeck;
-                activeChests = newState.activeChests; // Questo è già serializzato dall'host
-                baseEventsData = newState.baseEventsData;
-                eventDeck = newState.eventDeck;
-                eventHistory = newState.eventHistory;
-                currentEvent = newState.currentEvent;
-                currentDice = newState.currentDice;
-                pendingRerollCardId = newState.pendingRerollCardId;
-                combatSuccessBonus = newState.combatSuccessBonus;
-                pendingFours = newState.pendingFours;
-                boardState = newState.boardState; // Questo è già serializzato dall'host
+        // Riapplica lo stato
+        players = newState.players;
+        pvpOpponentIdx = newState.pvpOpponentIdx;
+        playerColors = newState.playerColors;
+        playerBgs = newState.playerBgs;
+        currentPlayerIdx = newState.currentPlayerIdx;
+        gameState = newState.gameState;
+        isAnimating = newState.isAnimating;
+        currentRound = newState.currentRound;
+        hasPerformedActionThisTurn = newState.hasPerformedActionThisTurn;
+        hasBoughtConsumableThisTurn = newState.hasBoughtConsumableThisTurn;
+        isWaitingExploratoryReroll = newState.isWaitingExploratoryReroll;
+        previousPlayerIdx = newState.previousPlayerIdx;
+        pawns = newState.pawns;
+        pawnRenderOrder = newState.pawnRenderOrder;
+        inventories = newState.inventories;
+        globalTokenPool = newState.globalTokenPool;
+        playerStats = newState.playerStats;
+        consumablesDeck = newState.consumablesDeck;
+        playerConsumables = newState.playerConsumables;
+        usedConsumables = newState.usedConsumables;
+        burnedConsumables = newState.burnedConsumables;
+        movesLeft = newState.movesLeft;
+        activeCellId = newState.activeCellId;
+        combatState = newState.combatState;
+        baseConsumablesData = newState.baseConsumablesData;
+        setupPlayerIdx = newState.setupPlayerIdx;
+        coordinateDeck = newState.coordinateDeck;
+        initialCoordinateDeck = newState.initialCoordinateDeck;
+        tileDeck = newState.tileDeck;
+        activeChests = newState.activeChests; 
+        baseEventsData = newState.baseEventsData;
+        eventDeck = newState.eventDeck;
+        eventHistory = newState.eventHistory;
+        currentEvent = newState.currentEvent;
+        currentDice = newState.currentDice;
+        pendingRerollCardId = newState.pendingRerollCardId;
+        combatSuccessBonus = newState.combatSuccessBonus;
+        pendingFours = newState.pendingFours;
+        boardState = newState.boardState; 
 
-                renderClientUI();
-            } else if (data.type === 'action' && isHost) {
+        renderClientUI();
+    } else if (data.type === 'action' && isHost) {
                 const { action, cardId } = data.payload;
                 const pConn = playerConns.find(p => p.conn.peer === fromPeerId);
                 if (!pConn) return;
