@@ -1534,6 +1534,12 @@
         window.useConsumable = function(id) {
             if (isHost) {
                 _useConsumable(currentPlayerIdx, id);
+                // Dopo la modifica dello stato, aggiorna l'UI dell'host e trasmetti
+                updateBoardsUI();
+                renderConsumablesHand();
+                if (gameState === 'event') {
+                    updateProvisionalCombatResult();
+                }
                 broadcastGameState();
             }
         };
@@ -1550,6 +1556,9 @@
         window.burnConsumable = function(id) {
             if (isHost) {
                 _burnConsumable(currentPlayerIdx, id);
+                // Dopo la modifica dello stato, aggiorna l'UI dell'host e trasmetti
+                updateInventoryUI();
+                renderConsumablesHand();
                 broadcastGameState();
             }
         };
@@ -3345,19 +3354,14 @@
                 }
             }
 
+            // Questo bottone esiste solo sull'interfaccia dell'host.
+            // Il client ha i suoi bottoni che inviano azioni specifiche.
             if (isHost) {
-                // L'host esegue l'azione direttamente
-                if (gameState === 'roll') rollDice(); 
-                else if ((gameState === 'move' || gameState === 'build') && !activeCellId) {
+                if (gameState === 'roll') {
+                    rollDice();
+                } else if ((gameState === 'move' || gameState === 'build') && !activeCellId) {
                     startEventPhase();
                 }
-            } else {
-                // Il client invia la richiesta di azione all'host
-                sendData({ type: 'action', payload: { action: 'end_turn' } });
-            }
-            if (gameState === 'roll') { isHost ? rollDice() : sendData({ type: 'action', payload: { action: 'roll' } }); }
-            else if ((gameState === 'move' || gameState === 'build') && !activeCellId) {
-                startEventPhase();
             }
         });
 
@@ -4057,6 +4061,11 @@
                 conn.on('open', () => {
                     playerConns.push(newPlayer);
                     conn.send({ type: 'assign_player', payload: { playerIndex: playerIndex } });
+
+                    // Invia immediatamente lo stato di gioco attuale al nuovo giocatore
+                    const state = getFullGameState();
+                    conn.send({ type: 'state_update', payload: state });
+
                     updatePlayerCounter();
                 });
 
@@ -4172,7 +4181,21 @@
                 if (document.getElementById('client-controller-overlay').style.display === 'none') {
                     setupClientUI();
                 }
-                Object.assign(window, data.payload);
+                // Object.assign(window, data.payload) non funziona con le variabili `let` globali.
+                // Assegnamo manualmente le parti dello stato necessarie al client per renderizzare la sua UI.
+                const newState = data.payload;
+                players = newState.players;
+                playerColors = newState.playerColors;
+                playerConsumables = newState.playerConsumables;
+                playerStats = newState.playerStats;
+                currentPlayerIdx = newState.currentPlayerIdx;
+                gameState = newState.gameState;
+                combatState = newState.combatState;
+                hasPerformedActionThisTurn = newState.hasPerformedActionThisTurn;
+                activeCellId = newState.activeCellId;
+                isAnimating = newState.isAnimating;
+                isWaitingExploratoryReroll = newState.isWaitingExploratoryReroll;
+
                 renderClientUI();
             } else if (data.type === 'action' && isHost) {
                 const { action, cardId } = data.payload;
@@ -4187,12 +4210,22 @@
 
                 if (action === 'use_consumable') {
                     _useConsumable(pIdx, cardId);
+                    // Aggiorna l'UI dell'host dopo l'azione del client
+                    updateBoardsUI();
+                    renderConsumablesHand();
+                    if (gameState === 'event') updateProvisionalCombatResult();
                 } else if (action === 'burn_consumable') {
                     _burnConsumable(pIdx, cardId);
+                    // Aggiorna l'UI dell'host dopo l'azione del client
+                    updateInventoryUI();
+                    renderConsumablesHand();
                 } else if (action === 'roll') {
-                    rollDice();
+                    if (pIdx === currentPlayerIdx && gameState === 'roll') {
+                        rollDice();
+                    }
                 } else if (action === 'end_turn') {
-                    if (playerConsumables[currentPlayerIdx].length <= 3) {
+                    // Il client preme "Termina Turno" che in realtà avvia la fase evento
+                    if (pIdx === currentPlayerIdx && (gameState === 'move' || gameState === 'build') && !activeCellId && playerConsumables[pIdx].length <= 3) {
                         startEventPhase();
                     }
                 }
