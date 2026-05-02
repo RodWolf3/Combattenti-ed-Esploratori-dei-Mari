@@ -1677,6 +1677,7 @@
             pendingFours = {1: false, 2: false};
             currentEvent = eventDeck.pop();
             updateTurnUI(); 
+            if (isHost) broadcastGameState();
             
             const overlay = document.getElementById('combat-overlay');
             overlay.style.display = 'flex';
@@ -2151,13 +2152,13 @@
             }
 
             await animateRewards(newItems, currentPlayerIdx);
-            if (isHost) broadcastGameState();
             if (totalSuccesses > 0) {
                 playerStats[currentPlayerIdx].cmb = Math.min(12, playerStats[currentPlayerIdx].cmb + totalSuccesses);
             }
             if (!isDefeated) {
                 playerStats[currentPlayerIdx].hp = Math.max(0, playerStats[currentPlayerIdx].hp - 1);
             }
+            if (isHost) broadcastGameState();
 
             updateBoardsUI();
 
@@ -2369,6 +2370,9 @@
             if (cardIndex === -1) { console.error("Stolen card not found in defender's hand."); finishPvPCombat(pvpTempSuccesses); return; } // Failsafe
             const [stolenCard] = defenderHand.splice(cardIndex, 1);
             playerConsumables[currentPlayerIdx].push(stolenCard);
+
+            // Broadcast the state change immediately
+            if (isHost) broadcastGameState();
 
             // Wait for the flip animation to complete and for the user to see the card
             await new Promise(r => setTimeout(r, 1500)); // 1.5 seconds for animation + viewing
@@ -2778,6 +2782,7 @@
                     document.body.appendChild(winOverlay);
                     gameState = 'game_over';
                 }
+                if (isHost) broadcastGameState();
             }
         }
 
