@@ -533,7 +533,7 @@
             flex-direction: column;
             height: 100dvh;
             width: 100vw;
-            overflow: hidden; /* Impedisce lo scroll dell'intera pagina */
+            overflow: hidden; /* Impedisce lo scroll verticale della pagina intera */
             padding: 10px;
             box-sizing: border-box;
         }
@@ -553,35 +553,45 @@
             margin: 5px 0 15px 0;
             flex-shrink: 0;
         }
+        
+        /* Contenitore carte Client: Scroll orizzontale a nastro per tutti gli orientamenti */
         #client-consumables-area {
             display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-            justify-content: center;
-            align-items: center;
+            gap: 15px; /* Spazio tra le carte */
+            flex-wrap: nowrap; /* Obbliga le carte su una singola riga orizzontale */
+            overflow-x: auto;  /* Abilita lo swipe orizzontale col dito */
+            overflow-y: hidden; /* Niente scroll verticale accidentale */
+            justify-content: flex-start; /* Fondamentale: impedisce che le carte escano a sinistra */
+            align-items: center; /* Centra le carte verticalmente */
             flex-grow: 1;
-            overflow: hidden; /* Niente scroll in verticale */
+            width: 100%;
+            padding: 15px 10px; /* Spazio vitale per non tagliare ombre o bordi */
+            box-sizing: border-box;
+            
+            /* Migliora la fluidità dello scorrimento su schermi touch (App-feel) */
+            -webkit-overflow-scrolling: touch; 
+            scroll-snap-type: x mandatory; 
         }
+        
+        /* Carte a dimensione REALE (esattamente come da PC) */
+        #client-consumables-area .consumable-card-ui {
+            width: 140px;
+            min-height: 200px;
+            flex: 0 0 auto; /* La carta non si schiaccia né si restringe MAI */
+            transform: none; /* Rimosso il ridimensionamento che causava bug grafici */
+            margin: 0;
+            overflow: visible; /* Lascia lo spazio necessario alla struttura interna */
+            scroll-snap-align: center; /* Quando scorri, la carta si ferma "a calamita" al centro */
+        }
+
         #client-status-message {
-            flex-shrink: 0; /* Impedisce che la barra venga schiacciata */
+            flex-shrink: 0;
             font-size: 22px;
             color: white;
             padding: 15px;
-            background: rgba(0, 0, 0, 0.4); /* Leggero sfondo per distaccarlo */
+            background: rgba(0, 0, 0, 0.4);
             border-radius: 12px;
             margin-top: auto;
-        }
-
-        /* --- STILI GLOBALI (Sia Host che Mobile) --- */
-        
-        /* Ridimensionamento carte per farle stare sempre a schermo in VERTICALE */
-        #client-consumables-area .consumable-card-ui {
-            width: 110px;
-            height: 165px; /* Sostituito min-height con height fissa */
-            font-size: 13px;
-            flex: 0 0 auto; /* Impedisce che la carta si allarghi o si restringa */
-            transform: scale(0.95);
-            overflow: hidden; /* Taglia via il testo che sfora la carta */
         }
 
         /* Pulsante Occhio Privacy */
@@ -618,34 +628,22 @@
         /* Stili per l'orientamento ORIZZONTALE su dispositivi piccoli (Landscape) */
         @media (orientation: landscape) and (max-height: 500px) {
             #client-controller-overlay {
-                padding: 10px;
+                padding: 5px 10px; /* Riduciamo i padding per avere più area utile in altezza */
             }
             #client-player-name {
-                font-size: 24px;
+                font-size: 20px; /* Nome più piccolo per non ingombrare */
             }
             #client-controller-overlay h3 {
-                display: none; /* Nasconde il titolo "Le tue carte" per salvare spazio in verticale */
+                display: none; /* Togliamo il titolo secondario per liberare spazio */
             }
             #client-consumables-area {
-                flex-direction: row;
-                flex-wrap: nowrap;
-                overflow-x: auto; /* Solo scroll orizzontale se sono troppe */
-                justify-content: center; /* CENTRATE */
-                align-items: center;
-                padding: 10px 20px;
-                height: 70%;
+                padding: 5px 0; /* Rimosso padding verticale inutile */
             }
-            #client-consumables-area .consumable-card-ui {
-                width: 130px;
-                height: 185px; /* Sostituito min-height con height fissa */
-                flex: 0 0 auto; 
-                transform: scale(1);
-                overflow: hidden;
-            }
+            /* La dimensione della carta in orizzontale rimane identica grazie alla regola genitore */
             #client-status-message {
-                font-size: 16px;
-                padding: 8px;
-                margin-top: 10px;
+                font-size: 14px;
+                padding: 5px 10px;
+                margin-top: 5px;
             }
         }
 
