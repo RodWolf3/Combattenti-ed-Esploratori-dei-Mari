@@ -749,7 +749,8 @@
             <p>Gli altri giocatori devono scansionare questo QR code o usare il link.</p>
             <div id="qr-code"></div>
             <p id="join-link"></p>
-            <h3 id="player-counter" style="color: #2ecc71; font-size: 24px;">In attesa di giocatori... (1/2)</h3>
+            <h3 id="player-counter" style="color: #2ecc71; font-size: 24px;"></h3>
+            <button id="manual-start-game-btn" class="btn-large" style="margin-top: 20px;" disabled>In attesa di giocatori...</button>
         </div>
     </div>
 
@@ -3966,10 +3967,6 @@
                     playerConns.push(newPlayer);
                     conn.send({ type: 'assign_player', payload: { playerIndex: playerIndex } });
                     updatePlayerCounter();
-
-                    if (playerConns.length === expectedPlayerCount - 1) {
-                        startGame(expectedPlayerCount);
-                    }
                 });
 
                 conn.on('data', (data) => handleDataReceived(data, conn.peer));
@@ -4114,7 +4111,19 @@
         }
 
         function updatePlayerCounter() {
-            document.getElementById('player-counter').textContent = `In attesa di giocatori... (${playerConns.length + 1}/${expectedPlayerCount})`;
+            const currentPlayers = playerConns.length + 1;
+            document.getElementById('player-counter').textContent = `Giocatori connessi: ${currentPlayers} / ${expectedPlayerCount}`;
+            
+            const startBtn = document.getElementById('manual-start-game-btn');
+            if (startBtn) {
+                if (currentPlayers > 1) {
+                    startBtn.disabled = false;
+                    startBtn.textContent = `Avvia Gioco (${currentPlayers} Giocatori)`;
+                } else {
+                    startBtn.disabled = true;
+                    startBtn.textContent = 'In attesa di altri giocatori...';
+                }
+            }
         }
 
         // --- INIZIALIZZAZIONE AL CARICAMENTO DELLA PAGINA ---
@@ -4124,6 +4133,14 @@
             if (hostId) {
                 joinGame(hostId);
             }
+
+            document.getElementById('manual-start-game-btn').addEventListener('click', () => {
+                if (isHost && !document.getElementById('manual-start-game-btn').disabled) {
+                    const actualPlayerCount = playerConns.length + 1;
+                    expectedPlayerCount = actualPlayerCount; // Aggiorna il conteggio per coerenza
+                    startGame(actualPlayerCount);
+                }
+            });
         });
     </script>
 </body>
