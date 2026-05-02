@@ -527,6 +527,66 @@
             to { box-shadow: 0 0 30px red; border-color: darkred; }
         }
 
+        #client-controller-overlay {
+            flex-direction: column;
+            justify-content: flex-start;
+            padding: 20px;
+            text-align: center;
+            overflow-y: auto;
+            box-sizing: border-box;
+        }
+        #client-player-name {
+            font-size: 45px;
+            margin-bottom: 30px;
+            color: #f1c40f;
+            font-family: 'Pirata One', cursive;
+            letter-spacing: 2px;
+        }
+        #client-controller-overlay h3 {
+            color: white;
+            font-family: 'Pirata One', cursive;
+            letter-spacing: 1px;
+            font-size: 28px;
+        }
+        #client-consumables-area {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+            width: 100%;
+            padding: 20px 0;
+            align-content: flex-start;
+        }
+        #client-status-message {
+            margin-top: auto;
+            font-size: 24px;
+            color: white;
+            padding-bottom: 40px;
+        }
+
+        /* Stili per l'orientamento orizzontale su dispositivi piccoli */
+        @media (orientation: landscape) and (max-height: 500px) {
+            #client-controller-overlay {
+                flex-direction: row;
+                align-items: center;
+                justify-content: space-around;
+                gap: 15px;
+            }
+            #client-consumables-area {
+                flex: 1;
+                height: 90%;
+                overflow-y: auto;
+                background: rgba(0,0,0,0.15);
+                border-radius: 10px;
+                padding: 10px;
+            }
+            #client-status-message {
+                margin-top: 0;
+                padding-bottom: 0;
+                flex-basis: 150px;
+            }
+        }
+
         /* --- DADO 3D CSS E MECCANICHE AGGIUNTE --- */
         .scene { width: 60px; height: 60px; perspective: 400px; margin: 15px 0; display: none; position: relative; }
         .cube { width: 100%; height: 100%; position: relative; transform-style: preserve-3d; transition: transform 1s ease-out; }
@@ -761,15 +821,15 @@
     <div id="coord-overlay" class="overlay" style="display: none;">
         <h2 id="coord-player" style="font-size: 45px; margin-bottom: 20px; color: #f1c40f;">Fase setup</h2>
         <div class="coord-card" id="coord-text">--</div>
-    </div>
+        </div>
 
-    <div id="client-controller-overlay" class="overlay" style="display: none; flex-direction: column; justify-content: flex-start; padding: 20px; text-align: center;">
-        <h2 id="client-player-name" style="font-size: 45px; margin-bottom: 30px; color: #f1c40f; font-family: 'Pirata One', cursive; letter-spacing: 2px;"></h2>
-        <h3 style="color: white; font-family: 'Pirata One', cursive; letter-spacing: 1px; font-size: 28px;">Le tue carte</h3>
-        <div id="client-consumables-area" style="display: flex; gap: 15px; flex-wrap: wrap; justify-content: center; width: 100%; padding: 20px 0;">
+        <div id="client-controller-overlay" class="overlay" style="display: none;">
+            <h2 id="client-player-name"></h2>
+            <h3>Le tue carte</h3>
+            <div id="client-consumables-area">
             <!-- Client's consumable cards will be rendered here -->
         </div>
-        <div id="client-status-message" style="margin-top: auto; font-size: 24px; color: white; padding-bottom: 40px;">
+            <div id="client-status-message">
             In attesa del tuo turno...
         </div>
     </div>
@@ -1539,6 +1599,7 @@
             hasBoughtConsumableThisTurn = true;
             updateInventoryUI();
             renderConsumablesHand();
+            if (isHost) broadcastGameState();
         }
 
         // --- GESTIONE DEL CLICK SUL DADO ESPLORATIVO ---
@@ -2090,6 +2151,7 @@
             }
 
             await animateRewards(newItems, currentPlayerIdx);
+            if (isHost) broadcastGameState();
             if (totalSuccesses > 0) {
                 playerStats[currentPlayerIdx].cmb = Math.min(12, playerStats[currentPlayerIdx].cmb + totalSuccesses);
             }
@@ -2611,6 +2673,7 @@
             gameState = 'roll'; 
             updateInventoryUI(); 
             updateTurnUI();
+            if (isHost) broadcastGameState();
         }
 
         // --- SISTEMA ABILITÀ E APERTURA FORZIERE ---
