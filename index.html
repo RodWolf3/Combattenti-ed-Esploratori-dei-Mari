@@ -572,7 +572,49 @@
             margin-top: auto;
         }
 
-        /* Stili per l'orientamento orizzontale su dispositivi piccoli */
+        /* --- STILI GLOBALI (Sia Host che Mobile) --- */
+        
+        /* Ridimensionamento carte per farle stare sempre a schermo in VERTICALE */
+        #client-consumables-area .consumable-card-ui {
+            width: 110px; /* Più piccole */
+            min-height: 160px;
+            font-size: 13px;
+            flex: 0 1 auto;
+            transform: scale(0.95);
+        }
+
+        /* Pulsante Occhio Privacy */
+        #toggle-visibility-btn {
+            background: #1a252f;
+            border: 2px solid #f1c40f;
+            color: #f1c40f;
+            border-radius: 50%;
+            width: 32px;
+            height: 32px;
+            cursor: pointer;
+            margin-left: 10px;
+            display: inline-flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 18px;
+            transition: 0.2s;
+            vertical-align: middle;
+        }
+        #toggle-visibility-btn:hover { background: #f1c40f; color: #1a252f; }
+
+        /* Classe per nascondere il contenuto della carta sull'Host */
+        .card-hidden-content {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100%;
+            font-size: 40px;
+            background: #2c3e50;
+            color: #f1c40f;
+            border-radius: 6px;
+        }
+
+        /* Stili per l'orientamento ORIZZONTALE su dispositivi piccoli (Landscape) */
         @media (orientation: landscape) and (max-height: 500px) {
             #client-controller-overlay {
                 padding: 10px;
@@ -592,44 +634,13 @@
                 padding: 10px 20px;
                 height: 70%;
             }
-            /* Ridimensionamento carte per farle stare sempre a schermo in verticale */
+            /* Nel layout orizzontale le carte tornano a grandezza naturale */
             #client-consumables-area .consumable-card-ui {
                 width: 130px;
                 min-height: 180px;
                 flex: 0 0 auto; /* Impedisce lo schiacciamento */
+                transform: scale(1);
             }
-
-        /* Pulsante Occhio Privacy */
-        #toggle-visibility-btn {
-            background: #1a252f;
-            border: 2px solid #f1c40f;
-            color: #f1c40f;
-            border-radius: 50%;
-            width: 32px;
-            height: 32px;
-            cursor: pointer;
-            margin-left: 10px;
-            display: inline-flex;
-            justify-content: center;
-            align-items: center;
-            font-size: 18px;
-            transition: 0.2s;
-            vertical-align: middle;
-        }
-
-        /* Classe per nascondere il contenuto della carta sull'Host */
-        .card-hidden-content {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100%;
-            font-size: 40px;
-            background: #2c3e50;
-            color: #f1c40f;
-            border-radius: 6px;
-        }
-        
-        #toggle-visibility-btn:hover { background: #f1c40f; color: #1a252f; }
             #client-status-message {
                 font-size: 16px;
                 padding: 8px;
