@@ -732,7 +732,7 @@
 </head>
 <body>
 
-    <div id="version-display">v0.2</div>
+    <div id="version-display">v0.3</div>
 
     <div id="game-info-bar">
         <div class="info-bar-section" id="info-player"></div>
@@ -4233,6 +4233,23 @@
                 movesLeft = newState.movesLeft;
                 activeCellId = newState.activeCellId;
                 combatState = newState.combatState;
+
+                // Aggiungi le variabili di stato mancanti per una sincronizzazione completa
+                baseConsumablesData = newState.baseConsumablesData;
+                setupPlayerIdx = newState.setupPlayerIdx;
+                coordinateDeck = newState.coordinateDeck;
+                initialCoordinateDeck = newState.initialCoordinateDeck;
+                tileDeck = newState.tileDeck;
+                activeChests = newState.activeChests; // Questo è già serializzato dall'host
+                baseEventsData = newState.baseEventsData;
+                eventDeck = newState.eventDeck;
+                eventHistory = newState.eventHistory;
+                currentEvent = newState.currentEvent;
+                currentDice = newState.currentDice;
+                pendingRerollCardId = newState.pendingRerollCardId;
+                combatSuccessBonus = newState.combatSuccessBonus;
+                pendingFours = newState.pendingFours;
+                boardState = newState.boardState; // Questo è già serializzato dall'host
 
                 renderClientUI();
             } else if (data.type === 'action' && isHost) {
