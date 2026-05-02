@@ -758,6 +758,17 @@
         <div class="coord-card" id="coord-text">--</div>
     </div>
 
+    <div id="client-controller-overlay" class="overlay" style="display: none; flex-direction: column; justify-content: flex-start; padding: 20px; text-align: center;">
+        <h2 id="client-player-name" style="font-size: 45px; margin-bottom: 30px; color: #f1c40f; font-family: 'Pirata One', cursive; letter-spacing: 2px;"></h2>
+        <h3 style="color: white; font-family: 'Pirata One', cursive; letter-spacing: 1px; font-size: 28px;">Le tue carte</h3>
+        <div id="client-consumables-area" style="display: flex; gap: 15px; flex-wrap: wrap; justify-content: center; width: 100%; padding: 20px 0;">
+            <!-- Client's consumable cards will be rendered here -->
+        </div>
+        <div id="client-status-message" style="margin-top: auto; font-size: 24px; color: white; padding-bottom: 40px;">
+            In attesa del tuo turno...
+        </div>
+    </div>
+
     <div id="combat-overlay" class="overlay" style="display: none;">
         <div id="combat-layout">
             <div class="event-card-ui" id="combat-card-ui">
@@ -982,6 +993,7 @@
         let myPeerId = null;
         let isHost = false;
         let expectedPlayerCount = 0;
+        let myPlayerIndex = null;
 
         // Funzione per ottenere lo stato completo del gioco
         function getFullGameState() {
@@ -1398,68 +1410,64 @@
             }
         }
 
-        window.useConsumable = function(id) {
-            const hand = playerConsumables[currentPlayerIdx];
+        function _useConsumable(pIdx, id) {
+            const hand = playerConsumables[pIdx];
             const idx = hand.findIndex(c => c.id === id);
-            if (idx > -1) {
-                const card = hand[idx];
-                
-                if (card.type === 'Benda') {
-                    if (playerStats[currentPlayerIdx].hp < playerStats[currentPlayerIdx].maxHp) {
-                        playerStats[currentPlayerIdx].hp++;
-                        usedConsumables.push({ card: hand.splice(idx, 1)[0], pIdx: currentPlayerIdx });
-                        updateBoardsUI();
-                        renderConsumablesHand();
-                    }
-                } else if (card.type === 'Magia del Tempo') {
-                    if (gameState === 'event' && combatState === 'evaluating') {
+            if (idx === -1) return;
+
+            const card = hand[idx];
+            let canUse = true;
+
+            if (card.type === 'Benda') {
+                if (playerStats[pIdx].hp >= playerStats[pIdx].maxHp) canUse = false;
+                if (canUse) {
+                    playerStats[pIdx].hp++;
+                    usedConsumables.push({ card: hand.splice(idx, 1)[0], pIdx: pIdx });
+                }
+            } else if (card.type === 'Magia del Tempo') {
+                if (!((gameState === 'move' || gameState === 'build') && !hasPerformedActionThisTurn && !activeCellId && !isAnimating && !isWaitingExploratoryReroll) && !(gameState === 'event' && combatState === 'evaluating')) {
+                    canUse = false;
+                }
+                if (canUse) {
+                    usedConsumables.push({ card: hand.splice(idx, 1)[0], pIdx: pIdx });
+                    if (gameState === 'event') {
                         combatState = 'selecting_die';
                         pendingRerollCardId = id;
-                        const overlay = document.getElementById('ec-outcome-overlay');
-                        overlay.textContent = 'Seleziona il dado da ritirare!';
-                        overlay.style.color = '#023e8a';
-                        overlay.style.borderColor = '#023e8a';
-                        overlay.style.background = 'rgba(253, 246, 227, 0.95)';
-                        overlay.style.fontSize = '70px';
-                        overlay.style.display = 'flex';
-                        
-                        document.getElementById('cube-1').classList.add('clickable-die');
-                        document.getElementById('cube-2').classList.add('clickable-die');
-                    } else if ((gameState === 'move' || gameState === 'build') && !hasPerformedActionThisTurn && !activeCellId && !isAnimating && !isWaitingExploratoryReroll) {
-                        usedConsumables.push({ card: hand[idx], pIdx: currentPlayerIdx });
-                        hand.splice(idx, 1);
-                        
-                        // Attiva Ritiro Interattivo
+                    } else {
                         isWaitingExploratoryReroll = true;
-                        document.querySelectorAll('.move-hitbox').forEach(el => el.remove());
-                        clearHighlightPath();
-                        updateBoardsUI();
-                        renderConsumablesHand();
-                        updateTurnUI(); // Aggiorna il testo e mostra il dado
-                        
-                        document.getElementById('dice-cube').classList.add('clickable-die');
-                    }
-                } else if (card.type === 'Successo Assicurato') {
-                    if (gameState === 'event' && (combatState === 'idle' || combatState === 'evaluating' || combatState === 'resolving_four')) {
-                        combatSuccessBonus++;
-                        usedConsumables.push({ card: hand.splice(idx, 1)[0], pIdx: currentPlayerIdx });
-                        renderConsumablesHand();
-                        updateProvisionalCombatResult();
                     }
                 }
+            } else if (card.type === 'Successo Assicurato') {
+                if (!(gameState === 'event' && (combatState === 'idle' || combatState === 'evaluating' || combatState === 'resolving_four'))) {
+                    canUse = false;
+                }
+                if (canUse) {
+                    combatSuccessBonus++;
+                    usedConsumables.push({ card: hand.splice(idx, 1)[0], pIdx: pIdx });
+                }
+            }
+        }
+
+        window.useConsumable = function(id) {
+            if (isHost) {
+                _useConsumable(currentPlayerIdx, id);
+                broadcastGameState();
             }
         };
 
-        window.burnConsumable = function(id) {
-            const hand = playerConsumables[currentPlayerIdx];
+        function _burnConsumable(pIdx, id) {
+            const hand = playerConsumables[pIdx];
             const idx = hand.findIndex(c => c.id === id);
             if (idx > -1) {
-                const card = hand[idx];
-                burnedConsumables.push({ card: card, pIdx: currentPlayerIdx });
-                hand.splice(idx, 1);
-                inventories[currentPlayerIdx].push('🪙', '🪙');
-                updateInventoryUI();
-                renderConsumablesHand();
+                burnedConsumables.push({ card: hand.splice(idx, 1)[0], pIdx: pIdx });
+                inventories[pIdx].push('🪙', '🪙');
+            }
+        }
+
+        window.burnConsumable = function(id) {
+            if (isHost) {
+                _burnConsumable(currentPlayerIdx, id);
+                broadcastGameState();
             }
         };
 
@@ -3254,7 +3262,7 @@
                 }
             } else {
                 // Il client invia la richiesta di azione all'host
-                sendData({ type: 'action', payload: { action: 'end_exploration' } });
+                sendData({ type: 'action', payload: { action: 'end_turn' } });
             }
             if (gameState === 'roll') { isHost ? rollDice() : sendData({ type: 'action', payload: { action: 'roll' } }); }
             else if ((gameState === 'move' || gameState === 'build') && !activeCellId) {
@@ -3268,7 +3276,7 @@
                 boardState[activeCellId].locked = true; boardState[activeCellId].poly.classList.remove('rotator-area');
                 document.querySelector(`.hex[data-cell-id='${activeCellId}']`).classList.remove('blink-hex');
                 activeCellId = null; setupPlayerIdx++; showCoordinateExtraction();
-                broadcastGameState(); // Sincronizza dopo il piazzamento del porto
+                if (isHost) broadcastGameState(); // Sincronizza dopo il piazzamento del porto
             } else if (gameState === 'build') {
                 if (!activeCellId) return;
                 
@@ -3951,14 +3959,20 @@
             });
 
             peer.on('connection', (conn) => {
-                playerConns.push(conn);
-                updatePlayerCounter();
-                conn.on('data', (data) => handleDataReceived(data, conn.peer));
+                const playerIndex = playerConns.length + 1;
+                const newPlayer = { conn: conn, playerIndex: playerIndex };
+                
+                conn.on('open', () => {
+                    playerConns.push(newPlayer);
+                    conn.send({ type: 'assign_player', payload: { playerIndex: playerIndex } });
+                    updatePlayerCounter();
 
-                if (playerConns.length === expectedPlayerCount - 1) {
-                    // Tutti connessi, avvia il gioco
-                    startGame(expectedPlayerCount);
-                }
+                    if (playerConns.length === expectedPlayerCount - 1) {
+                        startGame(expectedPlayerCount);
+                    }
+                });
+
+                conn.on('data', (data) => handleDataReceived(data, conn.peer));
             });
         }
 
@@ -3970,7 +3984,7 @@
                 myPeerId = id;
                 let conn = peer.connect(hostId);
                 conn.on('open', () => {
-                    playerConns.push(conn);
+                    playerConns.push({conn: conn, playerIndex: null}); // pIdx will be assigned by host
                     document.getElementById('initial-start-screen').innerHTML = `<h2>Connesso! In attesa che l'host avvii la partita...</h2>`;
                 });
                 conn.on('data', (data) => handleDataReceived(data, conn.peer));
@@ -3981,45 +3995,120 @@
             if (!isHost) return;
             const state = getFullGameState();
             const dataToSend = { type: 'state_update', payload: state };
-            playerConns.forEach(conn => conn.send(dataToSend));
+            playerConns.forEach(p => p.conn.send(dataToSend));
         }
 
         function sendData(data) {
-            playerConns.forEach(conn => conn.send(data));
+            playerConns.forEach(p => p.conn.send(data));
+        }
+
+        function setupClientUI() {
+            document.getElementById('game-content-wrapper').style.display = 'none';
+            document.getElementById('game-info-bar').style.display = 'none';
+            document.getElementById('start-overlay').style.display = 'none';
+            const controllerOverlay = document.getElementById('client-controller-overlay');
+            controllerOverlay.style.display = 'flex';
+        }
+
+        function renderClientUI() {
+            if (isHost || myPlayerIndex === null) return;
+
+            const myHand = playerConsumables[myPlayerIndex];
+            const isMyTurn = (currentPlayerIdx === myPlayerIndex);
+            const container = document.getElementById('client-consumables-area');
+            const nameEl = document.getElementById('client-player-name');
+            const statusEl = document.getElementById('client-status-message');
+
+            nameEl.textContent = `Giocatore ${players[myPlayerIndex]}`;
+            nameEl.style.color = playerColors[myPlayerIndex];
+            container.innerHTML = '';
+
+            if (!myHand || myHand.length === 0) {
+                container.innerHTML = '<p>Non hai carte consumabili.</p>';
+            } else {
+                myHand.forEach(card => {
+                    const cardEl = document.createElement('div');
+                    cardEl.className = 'consumable-card-ui';
+                    
+                    let canUse = isMyTurn;
+                    if (card.type === 'Benda' && playerStats[myPlayerIndex].hp >= playerStats[myPlayerIndex].maxHp) {
+                        canUse = false;
+                    }
+                    if (card.type === 'Magia del Tempo') {
+                        canUse = isMyTurn && (
+                            ((gameState === 'move' || gameState === 'build') && !hasPerformedActionThisTurn && !activeCellId && !isAnimating && !isWaitingExploratoryReroll) ||
+                            (gameState === 'event' && combatState === 'evaluating')
+                        );
+                    }
+                    if (card.type === 'Successo Assicurato') {
+                        canUse = isMyTurn && gameState === 'event' && (combatState === 'idle' || combatState === 'evaluating' || combatState === 'resolving_four');
+                    }
+
+                    cardEl.innerHTML = `
+                        <div class="cons-title">${card.type}</div>
+                        <div class="cons-icon">${card.icon}</div>
+                        <div class="cons-desc">${card.desc}</div>
+                        <div class="cons-actions">
+                            <button class="cons-btn btn-use" ${!canUse ? 'disabled' : ''}>Usa</button>
+                            <button class="cons-btn btn-burn" ${!isMyTurn ? 'disabled' : ''}>2🪙</button>
+                        </div>
+                    `;
+
+                    cardEl.querySelector('.btn-use').onclick = () => {
+                        sendData({ type: 'action', payload: { action: 'use_consumable', cardId: card.id } });
+                    };
+                    cardEl.querySelector('.btn-burn').onclick = () => {
+                        sendData({ type: 'action', payload: { action: 'burn_consumable', cardId: card.id } });
+                    };
+
+                    container.appendChild(cardEl);
+                });
+            }
+            
+            if (isMyTurn) {
+                statusEl.textContent = "È il tuo turno!";
+                statusEl.style.color = '#2ecc71';
+            } else {
+                statusEl.textContent = `In attesa... (Turno di Giocatore ${players[currentPlayerIdx]})`;
+                statusEl.style.color = 'white';
+            }
         }
 
         function handleDataReceived(data, fromPeerId) {
-            if (data.type === 'state_update' && !isHost) {
-                // Un client riceve un aggiornamento completo dello stato
-                const state = data.payload;
-                // Sovrascrive brutalmente lo stato locale
-                Object.assign(window, state);
-                
-                // Nasconde l'overlay di avvio se è la prima sincronizzazione
-                const startOverlay = document.getElementById('start-overlay');
-                if (startOverlay.style.display !== 'none') {
-                    startOverlay.style.opacity = '0';
-                    setTimeout(() => { startOverlay.style.display = 'none'; }, 500);
+            if (data.type === 'assign_player' && !isHost) {
+                myPlayerIndex = data.payload.playerIndex;
+                const pConn = playerConns.find(p => p.conn.peer === fromPeerId);
+                if (pConn) pConn.playerIndex = myPlayerIndex;
+            }
+            else if (data.type === 'state_update' && !isHost) {
+                if (document.getElementById('client-controller-overlay').style.display === 'none') {
+                    setupClientUI();
                 }
-
-                // Forza un re-render completo dell'UI
-                initBoards(); // Ricrea le plance con i dati aggiornati
-                updateInventoryUI();
-                updateTurnUI();
-                renderPawnsAndHitboxes();
-                fillDraftPool();
-                document.getElementById('deck-count').textContent = tileDeck.length;
+                Object.assign(window, data.payload);
+                renderClientUI();
             } else if (data.type === 'action' && isHost) {
-                // L'host riceve una richiesta di azione da un client
-                const { action, params } = data.payload;
-                // QUI L'HOST DEVE VALIDARE E APPLICARE L'AZIONE
-                // Esempio:
-                if (action === 'roll') {
-                    rollDice();
-                }
-                // Aggiungere qui la logica per altre azioni...
+                const { action, cardId } = data.payload;
+                const pConn = playerConns.find(p => p.conn.peer === fromPeerId);
+                if (!pConn) return;
+                const pIdx = pConn.playerIndex;
 
-                // Dopo ogni azione, l'host trasmette il nuovo stato a tutti
+                if (pIdx !== currentPlayerIdx) {
+                    console.warn(`Azione da giocatore ${pIdx} ma è il turno del giocatore ${currentPlayerIdx}.`);
+                    return;
+                }
+
+                if (action === 'use_consumable') {
+                    _useConsumable(pIdx, cardId);
+                } else if (action === 'burn_consumable') {
+                    _burnConsumable(pIdx, cardId);
+                } else if (action === 'roll') {
+                    rollDice();
+                } else if (action === 'end_turn') {
+                    if (playerConsumables[currentPlayerIdx].length <= 3) {
+                        startEventPhase();
+                    }
+                }
+                
                 broadcastGameState();
             }
         }
@@ -4033,10 +4122,8 @@
             const urlParams = new URLSearchParams(window.location.search);
             hostId = urlParams.get('host');
             if (hostId) {
-                // Se c'è un ID host nell'URL, prova a unirti
                 joinGame(hostId);
             }
-            // Altrimenti, mostra la schermata iniziale per creare una partita
         });
     </script>
 </body>
