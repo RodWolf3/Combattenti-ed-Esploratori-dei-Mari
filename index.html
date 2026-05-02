@@ -717,9 +717,22 @@
             position: absolute; top: 20px; left: 20px; z-index: 500; display: none; pointer-events: none;
             box-shadow: 0 10px 25px rgba(0,0,0,0.5); border-radius: 8px; background: white; border: 2px solid #023e8a;
         }
+
+        #version-display {
+            position: fixed;
+            top: 5px;
+            right: 10px;
+            font-family: 'Cause', sans-serif;
+            font-size: 14px;
+            color: rgba(0, 0, 0, 0.4);
+            z-index: 9999;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
+
+    <div id="version-display">v0.1</div>
 
     <div id="game-info-bar">
         <div class="info-bar-section" id="info-player"></div>
