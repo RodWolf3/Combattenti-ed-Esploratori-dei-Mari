@@ -4176,25 +4176,45 @@
                 myPlayerIndex = data.payload.playerIndex;
                 const pConn = playerConns.find(p => p.conn.peer === fromPeerId);
                 if (pConn) pConn.playerIndex = myPlayerIndex;
+                // Una volta che sappiamo chi siamo, proviamo a renderizzare l'UI
+                // nel caso avessimo già ricevuto uno stato prima dell'assegnazione.
+                if (players.length > 0) {
+                    if (document.getElementById('client-controller-overlay').style.display === 'none') {
+                        setupClientUI();
+                    }
+                    renderClientUI();
+                }
             }
             else if (data.type === 'state_update' && !isHost) {
                 if (document.getElementById('client-controller-overlay').style.display === 'none') {
                     setupClientUI();
                 }
-                // Object.assign(window, data.payload) non funziona con le variabili `let` globali.
-                // Assegnamo manualmente le parti dello stato necessarie al client per renderizzare la sua UI.
+                // Assegnamo manualmente tutte le parti necessarie dello stato al client.
                 const newState = data.payload;
                 players = newState.players;
+                pvpOpponentIdx = newState.pvpOpponentIdx;
                 playerColors = newState.playerColors;
-                playerConsumables = newState.playerConsumables;
-                playerStats = newState.playerStats;
+                playerBgs = newState.playerBgs;
                 currentPlayerIdx = newState.currentPlayerIdx;
                 gameState = newState.gameState;
-                combatState = newState.combatState;
-                hasPerformedActionThisTurn = newState.hasPerformedActionThisTurn;
-                activeCellId = newState.activeCellId;
                 isAnimating = newState.isAnimating;
+                currentRound = newState.currentRound;
+                hasPerformedActionThisTurn = newState.hasPerformedActionThisTurn;
+                hasBoughtConsumableThisTurn = newState.hasBoughtConsumableThisTurn;
                 isWaitingExploratoryReroll = newState.isWaitingExploratoryReroll;
+                previousPlayerIdx = newState.previousPlayerIdx;
+                pawns = newState.pawns;
+                pawnRenderOrder = newState.pawnRenderOrder;
+                inventories = newState.inventories;
+                globalTokenPool = newState.globalTokenPool;
+                playerStats = newState.playerStats;
+                consumablesDeck = newState.consumablesDeck;
+                playerConsumables = newState.playerConsumables;
+                usedConsumables = newState.usedConsumables;
+                burnedConsumables = newState.burnedConsumables;
+                movesLeft = newState.movesLeft;
+                activeCellId = newState.activeCellId;
+                combatState = newState.combatState;
 
                 renderClientUI();
             } else if (data.type === 'action' && isHost) {
