@@ -3224,7 +3224,12 @@
                 }
             }, 10000);
 
-            peer = new Peer();
+            peer = new Peer(undefined, {
+                host: '0.peerjs.com',
+                port: 443,
+                path: '/',
+                secure: true
+            });
             peer.on('open', hostId => {
                 clearTimeout(connectionTimeout);
                 console.log('Host Peer ID:', hostId);
@@ -4021,7 +4026,12 @@
             const mobileConsumablesArea = document.getElementById('mobile-consumables-area');
             mobileConsumablesArea.innerHTML = `<p style="color:white; text-align:center; font-family: 'Cause', sans-serif;">Connessione all'host in corso...</p>`;
 
-            peer = new Peer();
+            peer = new Peer(undefined, {
+                host: '0.peerjs.com',
+                port: 443,
+                path: '/',
+                secure: true
+            });
 
             const connectionTimeout = setTimeout(() => {
                 mobileConsumablesArea.innerHTML = `<p style="color: #f1c40f; text-align:center; font-family: 'Cause', sans-serif;">Impossibile connettersi all'host. Verifica che il QR code sia corretto e che la tua connessione sia attiva.</p>`;
