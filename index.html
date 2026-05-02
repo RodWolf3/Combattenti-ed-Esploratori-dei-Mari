@@ -732,7 +732,7 @@
 </head>
 <body>
 
-    <div id="version-display">v0.3</div>
+    <div id="version-display">v0.4</div>
 
     <div id="game-info-bar">
         <div class="info-bar-section" id="info-player"></div>
@@ -2294,6 +2294,7 @@
             resetDiceColors();
             document.getElementById('cube-1').style.transition = 'none'; document.getElementById('cube-1').style.transform = `rotateX(0deg) rotateY(0deg)`;
             document.getElementById('cube-2').style.transition = 'none'; document.getElementById('cube-2').style.transform = `rotateX(0deg) rotateY(0deg)`;
+            if (isHost) broadcastGameState();
         }
 
         let pvpTempSuccesses = 0;
@@ -2450,6 +2451,7 @@
                 nextBtn.style.display = 'block';
                 nextBtn.textContent = 'Prossimo Evento';
             }
+            if (isHost) broadcastGameState();
         }
 
         async function pushDefenderTo(targetCellId) {
@@ -2485,6 +2487,7 @@
             combatState = 'pvp_resolved';
             renderPawnsAndHitboxes();
             updateTurnUI();
+            if (isHost) broadcastGameState();
         }
 
         function highlightPushTargets(defenderCellId) {
