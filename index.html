@@ -3211,11 +3211,22 @@
             document.getElementById('player-select-screen').style.display = 'none';
             document.getElementById('qr-code-screen').style.display = 'block';
 
+            const statusDiv = document.getElementById('player-connection-status');
+            statusDiv.innerHTML = `<p style="color: white; font-size: 20px; font-family: 'Cause', sans-serif;">Connessione al server in corso...</p>`;
+
             const basePlayers = ['A', 'B', 'C', 'D'];
             players = basePlayers.slice(0, playerCount);
 
+            const connectionTimeout = setTimeout(() => {
+                statusDiv.innerHTML = `<p style="color: #e74c3c; font-size: 20px; font-family: 'Cause', sans-serif;">Errore di connessione al server. Verifica la tua connessione a internet e riprova.</p>`;
+                if (peer) {
+                    peer.destroy();
+                }
+            }, 10000);
+
             peer = new Peer();
             peer.on('open', hostId => {
+                clearTimeout(connectionTimeout);
                 console.log('Host Peer ID:', hostId);
                 const url = new URL(window.location.href);
                 url.search = '';
@@ -3230,8 +3241,9 @@
             });
 
             peer.on('error', err => {
+                clearTimeout(connectionTimeout);
                 console.error('PeerJS host error:', err);
-                alert('Si è verificato un errore di rete. Impossibile ospitare la partita.');
+                statusDiv.innerHTML = `<p style="color: #e74c3c; font-size: 20px; font-family: 'Cause', sans-serif;">Si è verificato un errore di rete. Impossibile ospitare la partita. Riprova più tardi.</p>`;
             });
         }
 
@@ -3239,7 +3251,7 @@
             document.getElementById('game-info-bar').style.display = 'flex';
             for(let i = 0; i < playerCount; i++) {
                 pawns[i] = { cellId: null, node: 'C' };
-                inventories[i] = ['🪙', '🪙', '🪙'];
+                inventories[i] = ['🪙', '🪙', '🪙', '🪙', '🪙'];
                 playerStats[i] = { vp: 0, exp: 0, cmb: 0, hp: 3, maxHp: 3, equipped: {1: {top:null, bottom:null}, 2: {top:null, bottom:null}, 3: {top:null, bottom:null}}, isRemote: i > 0 };
                 playerConsumables[i] = [];
                 pawnRenderOrder.push(i);
@@ -4005,14 +4017,26 @@
         }
 
         function joinGame(hostId) {
+            const mobileUi = document.getElementById('mobile-ui');
+            const mobileConsumablesArea = document.getElementById('mobile-consumables-area');
+            mobileConsumablesArea.innerHTML = `<p style="color:white; text-align:center; font-family: 'Cause', sans-serif;">Connessione all'host in corso...</p>`;
+
             peer = new Peer();
+
+            const connectionTimeout = setTimeout(() => {
+                mobileConsumablesArea.innerHTML = `<p style="color: #f1c40f; text-align:center; font-family: 'Cause', sans-serif;">Impossibile connettersi all'host. Verifica che il QR code sia corretto e che la tua connessione sia attiva.</p>`;
+                if (peer) peer.destroy();
+            }, 10000);
+
             peer.on('open', id => {
                 console.log('Client Peer ID:', id);
                 hostConn = peer.connect(hostId, { reliable: true });
 
                 hostConn.on('open', () => {
+                    clearTimeout(connectionTimeout);
                     console.log('Connected to host!');
                     hostConn.send({ type: 'join_request' });
+                    mobileConsumablesArea.innerHTML = `<p style="color:white; text-align:center; font-family: 'Cause', sans-serif;">Connesso! In attesa che la partita inizi...</p>`;
                 });
 
                 hostConn.on('data', data => {
@@ -4020,7 +4044,7 @@
                     switch (data.type) {
                         case 'welcome':
                             myPlayerIdx = data.pIdx;
-                            document.getElementById('mobile-ui').style.backgroundColor = playerBgs[myPlayerIdx];
+                            mobileUi.style.backgroundColor = playerBgs[myPlayerIdx];
                             document.getElementById('mobile-player-title').innerHTML = `Carte del Giocatore <span style="color:${playerColors[myPlayerIdx]}">${players[myPlayerIdx]}</span>`;
                             break;
                         case 'update_hand':
@@ -4029,17 +4053,28 @@
                         case 'game_data':
                             players = data.players;
                             break;
+                        case 'game_full':
+                            clearTimeout(connectionTimeout);
+                            mobileConsumablesArea.innerHTML = `<p style="color: #f1c40f; text-align:center; font-family: 'Cause', sans-serif;">La partita è già al completo.</p>`;
+                            break;
                     }
                 });
 
                 hostConn.on('close', () => {
-                    alert('Connessione con l\'host persa.');
-                    document.getElementById('mobile-consumables-area').innerHTML = '<p style="color:white; text-align:center;">Disconnesso.</p>';
+                    clearTimeout(connectionTimeout);
+                    mobileConsumablesArea.innerHTML = '<p style="color:white; text-align:center;">Connessione con l\'host persa.</p>';
                 });
                 hostConn.on('error', err => {
+                    clearTimeout(connectionTimeout);
                     console.error('PeerJS connection error:', err);
-                    alert('Errore di connessione con l\'host.');
+                    mobileConsumablesArea.innerHTML = '<p style="color: #e74c3c; text-align:center;">Errore di connessione con l\'host.</p>';
                 });
+            });
+
+            peer.on('error', err => {
+                clearTimeout(connectionTimeout);
+                console.error('PeerJS client error:', err);
+                mobileConsumablesArea.innerHTML = `<p style="color: #e74c3c; text-align:center;">Errore di rete. Impossibile connettersi.</p>`;
             });
         }
 
