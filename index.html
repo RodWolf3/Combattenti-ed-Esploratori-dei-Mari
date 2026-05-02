@@ -9,9 +9,6 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cause&family=Pirata+One&display=swap" rel="stylesheet">
 
-    <script src="https://unpkg.com/peerjs@1.5.2/dist/peer.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-
     <style>
         body {
             background-color: #f0e6d2; display: flex; flex-direction: column; 
@@ -19,23 +16,6 @@
             font-family: 'Cause', sans-serif;
             font-size: 18px;
             overflow: hidden; 
-        }
-
-        body.client-view #game-content-wrapper,
-        body.client-view #start-overlay,
-        body.client-view #game-info-bar,
-        body.client-view #coords-modal,
-        body.client-view #tiles-modal,
-        body.client-view #events-modal,
-        body.client-view #consumables-modal,
-        body.client-view #global-event-notification,
-        body.client-view #coord-overlay,
-        body.client-view #combat-overlay {
-            display: none !important;
-        }
-
-        body.client-view #mobile-ui {
-            display: flex;
         }
 
         #game-info-bar {
@@ -738,11 +718,6 @@
                 <button class="btn-large" style="background-color: #7f8c8d;" onclick="startTestGame()">Testing</button>
             </div>
         </div>
-        <div id="qr-code-screen" style="display: none; text-align: center;">
-            <h2 style="font-size: 30px; margin-bottom: 20px; color: white; font-family: 'Cause', sans-serif;">Inquadra il QR Code per unirti alla partita</h2>
-            <div id="qrcode" style="display: inline-block; background: white; padding: 15px; border-radius: 10px; margin-bottom: 20px;"></div>
-            <div id="player-connection-status"></div>
-        </div>
     </div>
 
     <div id="coord-overlay" class="overlay" style="display: none;">
@@ -866,13 +841,6 @@
         </div>
     </div>
 
-    <div id="mobile-ui" style="display: none; flex-direction: column; height: 100vh; width: 100vw; box-sizing: border-box; padding: 20px; align-items: center; justify-content: flex-start; overflow-y: auto;">
-        <h2 id="mobile-player-title" style="font-family: 'Pirata One', cursive; color: white; font-size: 36px; letter-spacing: 2px;">Le tue carte</h2>
-        <div id="mobile-consumables-area" style="display: flex; flex-direction: column; gap: 15px; width: 100%; max-width: 400px;">
-            <!-- Mobile consumables will be rendered here -->
-        </div>
-    </div>
-
     <script>
         // --- FUNZIONE PER OTTENERE L'ICONA ---
         function getIcon(type) {
@@ -974,12 +942,6 @@
         }
 
         // --- 1. VARIABILI GLOBALI E STATO ---
-        let peer;
-        let hostConn = null;
-        let playerConns = {}; // Store connections from clients { pIdx: conn }
-        let isHost = false;
-        let myPlayerIdx = -1; // For clients to know who they are
-
         let players = []; 
         let pvpOpponentIdx = -1;
         const playerColors = ['#d81b60', '#009688', '#f57c00', '#6a1b9a']; // Rosa, Turchese, Arancione scuro, Viola scuro
@@ -1304,12 +1266,6 @@
             burnedConsumables = [];
         }
 
-        function notifyHandUpdate(pIdx) {
-            if (isHost && playerStats[pIdx]?.isRemote) {
-                playerConns[pIdx]?.send({ type: 'update_hand', hand: playerConsumables[pIdx] });
-            }
-        }
-
         function drawConsumable(pIdx) {
             if (consumablesDeck.length === 0) {
                 initConsumablesDeck(); // Rimescola in caso di mazzo vuoto
@@ -1317,7 +1273,6 @@
             const card = consumablesDeck.pop();
             if(card) {
                 playerConsumables[pIdx].push(card);
-                notifyHandUpdate(pIdx);
                 renderConsumablesHand();
                 renderConsumableDeckUI();
             }
@@ -1396,11 +1351,6 @@
         }
 
         window.useConsumable = function(id) {
-            if (!isHost) {
-                sendConsumableAction(id, 'use');
-                return;
-            }
-
             const hand = playerConsumables[currentPlayerIdx];
             const idx = hand.findIndex(c => c.id === id);
             if (idx > -1) {
@@ -1412,7 +1362,6 @@
                         usedConsumables.push({ card: hand.splice(idx, 1)[0], pIdx: currentPlayerIdx });
                         updateBoardsUI();
                         renderConsumablesHand();
-                        notifyHandUpdate(currentPlayerIdx);
                     }
                 } else if (card.type === 'Magia del Tempo') {
                     if (gameState === 'event' && combatState === 'evaluating') {
@@ -1432,7 +1381,6 @@
                         usedConsumables.push({ card: hand[idx], pIdx: currentPlayerIdx });
                         hand.splice(idx, 1);
                         
-                        notifyHandUpdate(currentPlayerIdx);
                         // Attiva Ritiro Interattivo
                         isWaitingExploratoryReroll = true;
                         document.querySelectorAll('.move-hitbox').forEach(el => el.remove());
@@ -1448,7 +1396,6 @@
                         combatSuccessBonus++;
                         usedConsumables.push({ card: hand.splice(idx, 1)[0], pIdx: currentPlayerIdx });
                         renderConsumablesHand();
-                        notifyHandUpdate(currentPlayerIdx);
                         updateProvisionalCombatResult();
                     }
                 }
@@ -1456,11 +1403,6 @@
         };
 
         window.burnConsumable = function(id) {
-            if (!isHost) {
-                sendConsumableAction(id, 'burn');
-                return;
-            }
-
             const hand = playerConsumables[currentPlayerIdx];
             const idx = hand.findIndex(c => c.id === id);
             if (idx > -1) {
@@ -1470,7 +1412,6 @@
                 inventories[currentPlayerIdx].push('🪙', '🪙');
                 updateInventoryUI();
                 renderConsumablesHand();
-                notifyHandUpdate(currentPlayerIdx);
             }
         };
 
@@ -1519,7 +1460,6 @@
             hasBoughtConsumableThisTurn = true;
             updateInventoryUI();
             renderConsumablesHand();
-            notifyHandUpdate(currentPlayerIdx);
         }
 
         // --- GESTIONE DEL CLICK SUL DADO ESPLORATIVO ---
@@ -1995,7 +1935,6 @@
                 if (idx > -1) {
                     usedConsumables.push({ card: hand[idx], pIdx: currentPlayerIdx });
                     hand.splice(idx, 1);
-                    notifyHandUpdate(currentPlayerIdx);
                     updateBoardsUI();
                     renderConsumablesHand();
                 }
@@ -2289,8 +2228,6 @@
             if (cardIndex === -1) { console.error("Stolen card not found in defender's hand."); finishPvPCombat(pvpTempSuccesses); return; } // Failsafe
             const [stolenCard] = defenderHand.splice(cardIndex, 1);
             playerConsumables[currentPlayerIdx].push(stolenCard);
-            notifyHandUpdate(pvpOpponentIdx);
-            notifyHandUpdate(currentPlayerIdx);
 
             // Wait for the flip animation to complete and for the user to see the card
             await new Promise(r => setTimeout(r, 1500)); // 1.5 seconds for animation + viewing
@@ -3140,127 +3077,26 @@
             }, 4500);
         }
 
-        function updateConnectionStatus(totalPlayers) {
-            const statusDiv = document.getElementById('player-connection-status');
-            const connectedPlayers = Object.keys(playerConns).length;
-            statusDiv.innerHTML = `<p style="color: white; font-size: 20px; font-family: 'Cause', sans-serif;">In attesa di giocatori... (${connectedPlayers} / ${totalPlayers - 1} connessi)</p>`;
-        }
-
-        function setupHostListeners(playerCount) {
-            let connectedCount = 0;
-            const remotePlayersToConnect = playerCount - 1;
-
-            peer.on('connection', conn => {
-                conn.on('open', () => {
-                    if (connectedCount < remotePlayersToConnect) {
-                        const pIdx = connectedCount + 1; // Player 0 is host, clients are 1, 2, 3...
-                        console.log(`Player ${pIdx} connected from ${conn.peer}`);
-                        playerConns[pIdx] = conn;
-                        connectedCount++;
-
-                        conn.send({ type: 'game_data', players: players });
-                        conn.send({ type: 'welcome', pIdx: pIdx, color: playerColors[pIdx] });
-
-                        updateConnectionStatus(playerCount);
-
-                        conn.on('data', data => {
-                            handleClientAction(pIdx, data);
-                        });
-
-                        conn.on('close', () => {
-                            console.log(`Player ${pIdx} disconnected.`);
-                            delete playerConns[pIdx];
-                            alert(`Il giocatore ${players[pIdx]} si è disconnesso!`);
-                        });
-
-                        if (connectedCount === remotePlayersToConnect) {
-                            console.log('All players connected! Starting game.');
-                            initializeGame(playerCount);
-                        }
-                    } else {
-                        console.log('A player tried to connect but the game is full.');
-                        conn.send({ type: 'game_full' });
-                        setTimeout(() => conn.close(), 500);
-                    }
-                });
-            });
-        }
-
-        function handleClientAction(pIdx, data) {
-            if (data.type !== 'action') return;
-            if (currentPlayerIdx !== pIdx) {
-                console.warn(`Action from player ${pIdx} received, but it's player ${currentPlayerIdx}'s turn.`);
-                return;
-            }
-
-            console.log(`Host received action from player ${pIdx}:`, data);
-            const originalPlayerIdx = currentPlayerIdx;
-            currentPlayerIdx = pIdx;
-
-            if (data.action === 'use') {
-                window.useConsumable(data.cardId);
-            } else if (data.action === 'burn') {
-                window.burnConsumable(data.cardId);
-            }
-            currentPlayerIdx = originalPlayerIdx;
-        }
+        document.getElementById('shark-btn').addEventListener('click', () => {
+            document.getElementById('initial-start-screen').style.display = 'none';
+            document.getElementById('player-select-screen').style.display = 'block';
+        });
 
         window.startGame = function(playerCount) {
-            if (!isHost) return;
-
-            document.getElementById('player-select-screen').style.display = 'none';
-            document.getElementById('qr-code-screen').style.display = 'block';
-
-            const statusDiv = document.getElementById('player-connection-status');
-            statusDiv.innerHTML = `<p style="color: white; font-size: 20px; font-family: 'Cause', sans-serif;">Connessione al server in corso...</p>`;
-
-            const basePlayers = ['A', 'B', 'C', 'D'];
-            players = basePlayers.slice(0, playerCount);
-
-            const connectionTimeout = setTimeout(() => {
-                statusDiv.innerHTML = `<p style="color: #e74c3c; font-size: 20px; font-family: 'Cause', sans-serif;">Errore di connessione al server. Verifica la tua connessione a internet e riprova.</p>`;
-                if (peer) {
-                    peer.destroy();
-                }
-            }, 10000);
-
-            peer = new Peer(undefined, {
-                host: '0.peerjs.com',
-                port: 443,
-                path: '/',
-                secure: true
-            });
-            peer.on('open', hostId => {
-                clearTimeout(connectionTimeout);
-                console.log('Host Peer ID:', hostId);
-                const url = new URL(window.location.href);
-                url.search = '';
-                url.searchParams.set('host', hostId);
-                const joinUrl = url.toString();
-
-                document.getElementById('qrcode').innerHTML = '';
-                new QRCode(document.getElementById("qrcode"), { text: joinUrl, width: 256, height: 256, colorDark : "#000000", colorLight : "#ffffff", correctLevel : QRCode.CorrectLevel.H });
-
-                setupHostListeners(playerCount);
-                updateConnectionStatus(playerCount);
-            });
-
-            peer.on('error', err => {
-                clearTimeout(connectionTimeout);
-                console.error('PeerJS host error:', err);
-                statusDiv.innerHTML = `<p style="color: #e74c3c; font-size: 20px; font-family: 'Cause', sans-serif;">Si è verificato un errore di rete. Impossibile ospitare la partita. Riprova più tardi.</p>`;
-            });
-        }
-
-        function initializeGame(playerCount) {
             document.getElementById('game-info-bar').style.display = 'flex';
+
+            // 1. Inizializza gli array e gli oggetti dei giocatori
+            const basePlayers = ['A', 'B', 'C', 'D'];
             for(let i = 0; i < playerCount; i++) {
+                players.push(basePlayers[i]);
                 pawns[i] = { cellId: null, node: 'C' };
-                inventories[i] = ['🪙', '🪙', '🪙', '🪙', '🪙'];
-                playerStats[i] = { vp: 0, exp: 0, cmb: 0, hp: 3, maxHp: 3, equipped: {1: {top:null, bottom:null}, 2: {top:null, bottom:null}, 3: {top:null, bottom:null}}, isRemote: i > 0 };
+                inventories[i] = ['🪙', '🪙', '🪙'];
+                playerStats[i] = { vp: 0, exp: 0, cmb: 0, hp: 3, maxHp: 3, equipped: {1: {top:null, bottom:null}, 2: {top:null, bottom:null}, 3: {top:null, bottom:null}} };
                 playerConsumables[i] = [];
                 pawnRenderOrder.push(i);
             }
+
+            // 2. Nasconde l'overlay e avvia il gioco
             document.getElementById('start-overlay').style.opacity = '0';
             setTimeout(() => { 
                 document.getElementById('start-overlay').style.display = 'none'; 
@@ -3271,7 +3107,6 @@
                 prepareAndStartSetup(); 
             }, 500);
         }
-
 
         function startTestGame() {
             // --- Minimal setup from startGame ---
@@ -3330,11 +3165,6 @@
                 updateTurnUI();
             }, 500);
         }
-
-        document.getElementById('shark-btn').addEventListener('click', () => {
-            document.getElementById('initial-start-screen').style.display = 'none';
-            document.getElementById('player-select-screen').style.display = 'block';
-        });
 
         function prepareAndStartSetup() {
             gameState = 'setup'; const safeCells = [];
@@ -4020,123 +3850,6 @@
                 document.addEventListener('mousemove', onMouseMove); document.addEventListener('mouseup', onMouseUp);
             });
         }
-
-        function joinGame(hostId) {
-            const mobileUi = document.getElementById('mobile-ui');
-            const mobileConsumablesArea = document.getElementById('mobile-consumables-area');
-            mobileConsumablesArea.innerHTML = `<p style="color:white; text-align:center; font-family: 'Cause', sans-serif;">Connessione all'host in corso...</p>`;
-
-            peer = new Peer(undefined, {
-                host: '0.peerjs.com',
-                port: 443,
-                path: '/',
-                secure: true
-            });
-
-            const connectionTimeout = setTimeout(() => {
-                mobileConsumablesArea.innerHTML = `<p style="color: #f1c40f; text-align:center; font-family: 'Cause', sans-serif;">Impossibile connettersi all'host. Verifica che il QR code sia corretto e che la tua connessione sia attiva.</p>`;
-                if (peer) peer.destroy();
-            }, 10000);
-
-            peer.on('open', id => {
-                console.log('Client Peer ID:', id);
-                hostConn = peer.connect(hostId, { reliable: true });
-
-                hostConn.on('open', () => {
-                    clearTimeout(connectionTimeout);
-                    console.log('Connected to host!');
-                    hostConn.send({ type: 'join_request' });
-                    mobileConsumablesArea.innerHTML = `<p style="color:white; text-align:center; font-family: 'Cause', sans-serif;">Connesso! In attesa che la partita inizi...</p>`;
-                });
-
-                hostConn.on('data', data => {
-                    console.log('Data received from host:', data);
-                    switch (data.type) {
-                        case 'welcome':
-                            myPlayerIdx = data.pIdx;
-                            mobileUi.style.backgroundColor = playerBgs[myPlayerIdx];
-                            document.getElementById('mobile-player-title').innerHTML = `Carte del Giocatore <span style="color:${playerColors[myPlayerIdx]}">${players[myPlayerIdx]}</span>`;
-                            break;
-                        case 'update_hand':
-                            renderMobileConsumables(data.hand);
-                            break;
-                        case 'game_data':
-                            players = data.players;
-                            break;
-                        case 'game_full':
-                            clearTimeout(connectionTimeout);
-                            mobileConsumablesArea.innerHTML = `<p style="color: #f1c40f; text-align:center; font-family: 'Cause', sans-serif;">La partita è già al completo.</p>`;
-                            break;
-                    }
-                });
-
-                hostConn.on('close', () => {
-                    clearTimeout(connectionTimeout);
-                    mobileConsumablesArea.innerHTML = '<p style="color:white; text-align:center;">Connessione con l\'host persa.</p>';
-                });
-                hostConn.on('error', err => {
-                    clearTimeout(connectionTimeout);
-                    console.error('PeerJS connection error:', err);
-                    mobileConsumablesArea.innerHTML = '<p style="color: #e74c3c; text-align:center;">Errore di connessione con l\'host.</p>';
-                });
-            });
-
-            peer.on('error', err => {
-                clearTimeout(connectionTimeout);
-                console.error('PeerJS client error:', err);
-                mobileConsumablesArea.innerHTML = `<p style="color: #e74c3c; text-align:center;">Errore di rete. Impossibile connettersi.</p>`;
-            });
-        }
-
-        function renderMobileConsumables(hand) {
-            const container = document.getElementById('mobile-consumables-area');
-            container.innerHTML = '';
-            if (!hand || hand.length === 0) {
-                container.innerHTML = '<p style="color:white; text-align:center; font-family: \'Cause\', sans-serif;">Non hai carte consumabili.</p>';
-                return;
-            }
-
-            hand.forEach(card => {
-                const cardEl = document.createElement('div');
-                cardEl.className = 'consumable-card-ui';
-                cardEl.style.width = '100%';
-                cardEl.style.minHeight = 'auto';
-
-                cardEl.innerHTML = `
-                    <div class="cons-title">${card.type}</div>
-                    <div class="cons-icon">${card.icon}</div>
-                    <div class="cons-desc">${card.desc}</div>
-                    <div class="cons-actions">
-                        <button class="cons-btn btn-use" onclick="sendConsumableAction('${card.id}', 'use')">Usa</button>
-                        <button class="cons-btn btn-burn" onclick="sendConsumableAction('${card.id}', 'burn')">2🪙</button>
-                    </div>
-                `;
-                container.appendChild(cardEl);
-            });
-        }
-
-        function sendConsumableAction(cardId, action) {
-            if (hostConn && hostConn.open) {
-                hostConn.send({ type: 'action', action: action, cardId: cardId });
-            } else {
-                alert('Non connesso all\'host.');
-            }
-        }
-
-        document.addEventListener('DOMContentLoaded', () => {
-            const urlParams = new URLSearchParams(window.location.search);
-            const hostId = urlParams.get('host');
-
-            if (hostId) {
-                isHost = false;
-                document.body.classList.add('client-view');
-                document.getElementById('mobile-ui').style.display = 'flex';
-                document.getElementById('start-overlay').style.display = 'none';
-                joinGame(hostId);
-            } else {
-                isHost = true;
-            }
-        });
     </script>
 </body>
 </html>
