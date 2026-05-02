@@ -732,7 +732,7 @@
 </head>
 <body>
 
-    <div id="version-display">v0.1</div>
+    <div id="version-display">v0.2</div>
 
     <div id="game-info-bar">
         <div class="info-bar-section" id="info-player"></div>
@@ -4129,7 +4129,12 @@
             const nameEl = document.getElementById('client-player-name');
             const statusEl = document.getElementById('client-status-message');
 
-            nameEl.textContent = `Giocatore ${players[myPlayerIndex]}`;
+            if (players && players[myPlayerIndex]) {
+                nameEl.textContent = `Giocatore ${players[myPlayerIndex]}`;
+            } else {
+                const playerLetter = String.fromCharCode('A'.charCodeAt(0) + myPlayerIndex);
+                nameEl.textContent = `Giocatore ${playerLetter} (in attesa)`;
+            }
             nameEl.style.color = playerColors[myPlayerIndex];
             container.innerHTML = '';
 
