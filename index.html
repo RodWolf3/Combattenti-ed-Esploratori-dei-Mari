@@ -576,11 +576,12 @@
         
         /* Ridimensionamento carte per farle stare sempre a schermo in VERTICALE */
         #client-consumables-area .consumable-card-ui {
-            width: 110px; /* Più piccole */
-            min-height: 160px;
+            width: 110px;
+            height: 165px; /* Sostituito min-height con height fissa */
             font-size: 13px;
-            flex: 0 1 auto;
+            flex: 0 0 auto; /* Impedisce che la carta si allarghi o si restringa */
             transform: scale(0.95);
+            overflow: hidden; /* Taglia via il testo che sfora la carta */
         }
 
         /* Pulsante Occhio Privacy */
@@ -634,12 +635,12 @@
                 padding: 10px 20px;
                 height: 70%;
             }
-            /* Nel layout orizzontale le carte tornano a grandezza naturale */
             #client-consumables-area .consumable-card-ui {
                 width: 130px;
-                min-height: 180px;
-                flex: 0 0 auto; /* Impedisce lo schiacciamento */
+                height: 185px; /* Sostituito min-height con height fissa */
+                flex: 0 0 auto; 
                 transform: scale(1);
+                overflow: hidden;
             }
             #client-status-message {
                 font-size: 16px;
@@ -793,7 +794,7 @@
 </head>
 <body>
 
-    <div id="version-display">v0.7</div>
+    <div id="version-display">v0.8</div>
 
     <div id="game-info-bar">
         <div class="info-bar-section" id="info-player"></div>
@@ -1620,8 +1621,22 @@
                     if (gameState === 'event') {
                         combatState = 'selecting_die';
                         pendingRerollCardId = id;
+                        
+                        // ILLUMINA E RENDE I DADI CLICCABILI SULL'HOST
+                        document.getElementById('cube-1').classList.add('clickable-die');
+                        document.getElementById('cube-2').classList.add('clickable-die');
+                        
+                        const overlay = document.getElementById('ec-outcome-overlay');
+                        overlay.textContent = 'Scegli un dado da ritirare!';
+                        overlay.style.color = '#3498db';
+                        overlay.style.borderColor = '#3498db';
+                        overlay.style.background = 'rgba(253, 246, 227, 0.95)';
+                        overlay.style.fontSize = '40px';
+                        overlay.style.display = 'flex';
                     } else {
                         isWaitingExploratoryReroll = true;
+                        // ILLUMINA IL DADO DI ESPLORAZIONE
+                        document.getElementById('dice-cube').classList.add('clickable-die');
                     }
                 }
             } else if (card.type === 'Successo Assicurato') {
@@ -1633,18 +1648,21 @@
                     usedConsumables.push({ card: hand.splice(idx, 1)[0], pIdx: pIdx });
                 }
             }
-        }
 
-        window.useConsumable = function(id) {
-            if (isHost) {
-                _useConsumable(currentPlayerIdx, id);
-                // Dopo la modifica dello stato, aggiorna l'UI dell'host e trasmetti
-                updateBoardsUI();
-                renderConsumablesHand();
-                if (gameState === 'event') {
-                    updateProvisionalCombatResult();
-                }
-                broadcastGameState();
+            // NOTIFICA GLOBALE A SCHERMO SE LA CARTA VIENE USATA CON SUCCESSO
+            if (canUse) {
+                const notificationHTML = `
+                    <div style="font-family: 'Cause', sans-serif; font-size: 26px; color: white; line-height: 1.4; text-align: center;">
+                        <span style="color:${playerColors[pIdx]}; font-weight: bold; font-family: 'Pirata One', cursive; font-size: 38px; letter-spacing: 2px;">Giocatore ${players[pIdx]}</span> ha giocato:<br>
+                        <div style="margin-top: 15px; display: flex; justify-content: center;">
+                            <div class="consumable-card-ui" style="transform: scale(1.1); border-color: #27ae60; background: #fdf6e3; color: #023e8a; position: relative; pointer-events: none;">
+                                <div class="cons-title">${card.type}</div>
+                                <div class="cons-icon">${card.icon}</div>
+                                <div class="cons-desc">${card.desc}</div>
+                            </div>
+                        </div>
+                    </div>`;
+                showGlobalNotification(notificationHTML, 3000);
             }
         };
 
@@ -4371,6 +4389,7 @@
                     updateBoardsUI();
                     renderConsumablesHand();
                     if (gameState === 'event') updateProvisionalCombatResult();
+                    updateTurnUI();
                 } else if (action === 'burn_consumable') {
                     _burnConsumable(pIdx, cardId);
                     // Aggiorna l'UI dell'host dopo l'azione del client
@@ -4392,12 +4411,13 @@
         }
 
         function updatePlayerCounter() {
-            const currentPlayers = playerConns.length + 1;
+            // Rimosso il +1: conta esclusivamente i telefoni connessi partendo da 0
+            const currentPlayers = playerConns.length; 
             document.getElementById('player-counter').textContent = `Giocatori connessi: ${currentPlayers} / ${expectedPlayerCount}`;
             
             const startBtn = document.getElementById('manual-start-game-btn');
             if (startBtn) {
-                if (currentPlayers > 1) {
+                if (currentPlayers > 0) {
                     startBtn.disabled = false;
                     startBtn.textContent = `Avvia Gioco (${currentPlayers} Giocatori)`;
                 } else {
