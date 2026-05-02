@@ -1002,8 +1002,26 @@
 
         // Funzione per ottenere lo stato completo del gioco
         function getFullGameState() {
-            // Raccoglie tutte le variabili di stato in un unico oggetto
-            return { players, pvpOpponentIdx, playerColors, playerBgs, currentPlayerIdx, gameState, isAnimating, currentRound, hasPerformedActionThisTurn, hasBoughtConsumableThisTurn, isWaitingExploratoryReroll, previousPlayerIdx, pawns, pawnRenderOrder, inventories, globalTokenPool, playerStats, baseConsumablesData, consumablesDeck, playerConsumables, usedConsumables, burnedConsumables, movesLeft, activeCellId, setupPlayerIdx, coordinateDeck, initialCoordinateDeck, tileDeck, activeChests, baseEventsData, eventDeck, eventHistory, currentEvent, combatState, currentDice, pendingRerollCardId, combatSuccessBonus, pendingFours, boardState };
+            // Crea una versione "pulita" dello stato per la serializzazione, rimuovendo i riferimenti diretti agli elementi DOM.
+            const serializableBoardState = {};
+            for (const cellId in boardState) {
+                if (Object.hasOwnProperty.call(boardState, cellId)) {
+                    const { cardId, rotSteps, locked, cx, cy, object } = boardState[cellId];
+                    serializableBoardState[cellId] = { cardId, rotSteps, locked, cx, cy, object };
+                }
+            }
+
+            const serializableActiveChests = {};
+            for (const cellId in activeChests) {
+                if (Object.hasOwnProperty.call(activeChests, cellId)) {
+                    serializableActiveChests[cellId] = {
+                        // svgElement non può essere serializzato
+                        eventData: activeChests[cellId].eventData
+                    };
+                }
+            }
+
+            return { players, pvpOpponentIdx, playerColors, playerBgs, currentPlayerIdx, gameState, isAnimating, currentRound, hasPerformedActionThisTurn, hasBoughtConsumableThisTurn, isWaitingExploratoryReroll, previousPlayerIdx, pawns, pawnRenderOrder, inventories, globalTokenPool, playerStats, baseConsumablesData, consumablesDeck, playerConsumables, usedConsumables, burnedConsumables, movesLeft, activeCellId, setupPlayerIdx, coordinateDeck, initialCoordinateDeck, tileDeck, activeChests: serializableActiveChests, baseEventsData, eventDeck, eventHistory, currentEvent, combatState, currentDice, pendingRerollCardId, combatSuccessBonus, pendingFours, boardState: serializableBoardState };
         }
 
 
@@ -3304,6 +3322,7 @@
                 fillDraftPool(); 
                 gameState = 'move'; 
                 updateTurnUI();
+                if (isHost) broadcastGameState();
             }
         });
 
