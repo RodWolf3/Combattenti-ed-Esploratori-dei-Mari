@@ -527,17 +527,15 @@
             to { box-shadow: 0 0 30px red; border-color: darkred; }
         }
 
+  /* --- STILI CLIENT E PRIVACY --- */
         #client-controller-overlay {
             display: flex;
             flex-direction: column;
-            justify-content: flex-start;
-            padding: 15px;
-            box-sizing: border-box;
-            text-align: center;
-            /* Usa dvh per ignorare la barra degli indirizzi del browser mobile ed evitare i tagli in basso */
-            height: 100dvh; 
+            height: 100dvh;
             width: 100vw;
-            overflow: hidden; /* Blocca lo scroll dell'intera pagina */
+            overflow: hidden; /* Impedisce lo scroll dell'intera pagina */
+            padding: 10px;
+            box-sizing: border-box;
         }
         #client-player-name {
             font-size: 38px;
@@ -557,14 +555,12 @@
         }
         #client-consumables-area {
             display: flex;
-            gap: 15px;
-            flex-wrap: wrap; /* In verticale le carte vanno a capo */
+            gap: 8px;
+            flex-wrap: wrap;
             justify-content: center;
-            width: 100%;
-            flex-grow: 1; /* Spinge il messaggio di stato verso il basso */
-            overflow-y: auto; /* Permette lo scroll indipendente solo delle carte */
-            align-content: flex-start;
-            padding-bottom: 10px;
+            align-items: center;
+            flex-grow: 1;
+            overflow: hidden; /* Niente scroll in verticale */
         }
         #client-status-message {
             flex-shrink: 0; /* Impedisce che la barra venga schiacciata */
@@ -588,22 +584,52 @@
                 display: none; /* Nasconde il titolo "Le tue carte" per salvare spazio in verticale */
             }
             #client-consumables-area {
-                flex-direction: row; 
-                flex-wrap: nowrap; /* Impedisce alle carte di andare a capo */
-                overflow-x: auto; /* Abilita lo scroll orizzontale (swipe a destra/sinistra) */
-                overflow-y: hidden;
-                justify-content: flex-start;
+                flex-direction: row;
+                flex-wrap: nowrap;
+                overflow-x: auto; /* Solo scroll orizzontale se sono troppe */
+                justify-content: center; /* CENTRATE */
                 align-items: center;
-                background: rgba(0,0,0,0.15);
-                border-radius: 10px;
-                padding: 10px;
-                gap: 20px;
+                padding: 10px 20px;
+                height: 70%;
             }
-            /* Regola vitale: impedisce alle carte di "schiacciarsi" perdendo le loro proporzioni originali */
+            /* Ridimensionamento carte per farle stare sempre a schermo in verticale */
             #client-consumables-area .consumable-card-ui {
-                flex: 0 0 auto; 
-                margin: 0;
+                width: 130px;
+                min-height: 180px;
+                flex: 0 0 auto; /* Impedisce lo schiacciamento */
             }
+
+        /* Pulsante Occhio Privacy */
+        #toggle-visibility-btn {
+            background: #1a252f;
+            border: 2px solid #f1c40f;
+            color: #f1c40f;
+            border-radius: 50%;
+            width: 32px;
+            height: 32px;
+            cursor: pointer;
+            margin-left: 10px;
+            display: inline-flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 18px;
+            transition: 0.2s;
+            vertical-align: middle;
+        }
+
+        /* Classe per nascondere il contenuto della carta sull'Host */
+        .card-hidden-content {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100%;
+            font-size: 40px;
+            background: #2c3e50;
+            color: #f1c40f;
+            border-radius: 6px;
+        }
+        
+        #toggle-visibility-btn:hover { background: #f1c40f; color: #1a252f; }
             #client-status-message {
                 font-size: 16px;
                 padding: 8px;
@@ -748,7 +774,7 @@
             right: 10px;
             font-family: 'Cause', sans-serif;
             font-size: 14px;
-            color: rgba(0, 0, 0, 0.4);
+            color: rgb(255, 255, 255);
             z-index: 9999;
             pointer-events: none;
         }
@@ -925,7 +951,11 @@
         <div id="left-panel">
             <div id="boards-container"></div>
             <div id="consumables-area-container">
-                <div id="consumables-area-title">Consumabili In Mano</div>
+                <div id="consumables-area-title">Consumabili in Mano 
+                <button id="toggle-visibility-btn" onclick="toggleConsumablesVisibility()">
+                     <span id="visibility-icon">hide</span>
+                </button>
+</div>
                 <div id="consumables-area"></div>
             </div>
         </div>
@@ -1160,6 +1190,18 @@
         let playerConsumables = {}; 
         let usedConsumables = []; 
         let burnedConsumables = []; 
+
+        // --- NUOVE VARIABILI E FUNZIONI PER LA PRIVACY ---
+        let areConsumablesVisible = false; // Stato iniziale: carte nascoste sull'Host
+
+        window.toggleConsumablesVisibility = function() {
+            areConsumablesVisible = !areConsumablesVisible;
+            const icon = document.getElementById('visibility-icon');
+            if (icon) {
+                icon.textContent = areConsumablesVisible ? '👁️' : 'hide'; // Puoi usare l'emoji che preferisci
+            }
+            renderConsumablesHand(); // Forza l'aggiornamento visivo delle carte
+        }; 
 
         let movesLeft = 0; let activeCellId = null; 
         let setupPlayerIdx = 0; let coordinateDeck = []; let initialCoordinateDeck = []; let tileDeck = []; 
@@ -1482,25 +1524,36 @@
             const hand = playerConsumables[currentPlayerIdx];
             if (!hand || hand.length === 0) return;
 
+            // Capiamo se stiamo guardando lo schermo dell'Host o del Client
+            const isClientView = document.getElementById('client-controller-overlay').style.display !== 'none';
+
             hand.forEach((card, index) => {
                 const cardEl = document.createElement('div');
                 cardEl.className = 'consumable-card-ui';
                 if (hand.length > 3) cardEl.classList.add('cons-warning');
                 
+                // --- LOGICA PRIVACY ---
+                // Se siamo sull'Host e l'occhio è chiuso, nascondi la carta
+                if (!isClientView && !areConsumablesVisible) {
+                    cardEl.innerHTML = `<div class="card-hidden-content" style="display:flex; justify-content:center; align-items:center; width:100%; height:100%; font-size:50px; color:#27ae60;">?</div>`;
+                    cardEl.style.borderColor = "#95a5a6";
+                    cardEl.style.justifyContent = "center";
+                    container.appendChild(cardEl);
+                    return; // Passa alla prossima carta senza renderizzare i bottoni
+                }
+
+                // --- RENDER NORMALE SE VISIBILE ---
                 let disableUse = false;
                 if (card.type === 'Benda' && playerStats[currentPlayerIdx].hp >= playerStats[currentPlayerIdx].maxHp) {
                     disableUse = true;
                 }
                 if (card.type === 'Magia del Tempo') {
                     disableUse = true;
-                    // Abilita se siamo in esplorazione (e non abbiamo agito, né stiamo già aspettando un ritiro)
                     if ((gameState === 'move' || gameState === 'build') && !hasPerformedActionThisTurn && !activeCellId && !isAnimating && !isWaitingExploratoryReroll) disableUse = false;
-                    // Abilita se siamo in combat evalutaing (NESSUN 4 DA RISOLVERE)
                     if (gameState === 'event' && combatState === 'evaluating') disableUse = false;
                 }
                 if (card.type === 'Successo Assicurato') {
                     disableUse = true;
-                    // Abilita solo in fase di valutazione del combattimento
                     if (gameState === 'event' && (combatState === 'idle' || combatState === 'evaluating' || combatState === 'resolving_four')) disableUse = false;
                 }
                 
@@ -1518,9 +1571,9 @@
                 container.appendChild(cardEl);
             });
 
-            // Applica questa logica solo se il bottone di fine turno del combattimento è visibile
+            // Gestione del bottone Termina Turno / Scarta
             const nextBtn = document.getElementById('combat-next-btn');
-            if (nextBtn.style.display !== 'none' && (nextBtn.textContent.includes('Scarta') || nextBtn.textContent === 'Termina turno')) {
+            if (nextBtn && nextBtn.style.display !== 'none' && (nextBtn.textContent.includes('Scarta') || nextBtn.textContent === 'Termina turno')) {
                 const handSize = playerConsumables[currentPlayerIdx].length;
                 if (handSize > 3) {
                     const toDiscard = handSize - 3;
@@ -4081,7 +4134,7 @@
 
         // --- LOGICA P2P ---
 
-    let clientConnectionCounter = 1;
+    let clientConnectionCounter = 0;
 
         function initializeHost(playerCount) {
     isHost = true;
