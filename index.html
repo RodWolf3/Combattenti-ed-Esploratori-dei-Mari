@@ -732,7 +732,7 @@
 </head>
 <body>
 
-    <div id="version-display">v0.4</div>
+    <div id="version-display">v0.5</div>
 
     <div id="game-info-bar">
         <div class="info-bar-section" id="info-player"></div>
@@ -1423,16 +1423,19 @@
         }
 
         function drawConsumable(pIdx) {
-            if (consumablesDeck.length === 0) {
-                initConsumablesDeck(); // Rimescola in caso di mazzo vuoto
-            }
-            const card = consumablesDeck.pop();
-            if(card) {
-                playerConsumables[pIdx].push(card);
-                renderConsumablesHand();
-                renderConsumableDeckUI();
-            }
-        }
+    if (consumablesDeck.length === 0) {
+        initConsumablesDeck(); // Rimescola in caso di mazzo vuoto
+    }
+    const card = consumablesDeck.pop();
+    if(card) {
+        playerConsumables[pIdx].push(card);
+        renderConsumablesHand();
+        renderConsumableDeckUI();
+        
+        // AGGIUNGI QUESTA RIGA: Avvisa il client che ha pescato una carta!
+        if (isHost) broadcastGameState(); 
+    }
+}
 
         function renderConsumablesHand() {
             let targetId = 'consumables-area';
@@ -2728,20 +2731,23 @@
         };
 
         function equipAbility(pIdx, tier, pos, itemToEquip) {
-            const stats = playerStats[pIdx]; const inv = inventories[pIdx]; const itemIdx = inv.indexOf(itemToEquip);
-            if (itemIdx > -1) {
-                inv.splice(itemIdx, 1); 
-                stats.equipped[tier][pos] = itemToEquip; 
-                
-                if (itemToEquip === 'heart_upgrade') {
-                    stats.maxHp = Math.min(6, stats.maxHp + 1);
-                }
-
-                updateInventoryUI(); 
-                updateBoardsUI();
-                if (itemToEquip === '🚢') { movesLeft++; updateTurnUI(); }
-            }
+    const stats = playerStats[pIdx]; const inv = inventories[pIdx]; const itemIdx = inv.indexOf(itemToEquip);
+    if (itemIdx > -1) {
+        inv.splice(itemIdx, 1); 
+        stats.equipped[tier][pos] = itemToEquip; 
+        
+        if (itemToEquip === 'heart_upgrade') {
+            stats.maxHp = Math.min(6, stats.maxHp + 1);
         }
+
+        updateInventoryUI(); 
+        updateBoardsUI();
+        if (itemToEquip === '🚢') { movesLeft++; updateTurnUI(); }
+        
+        // AGGIUNGI QUESTA RIGA
+        if (isHost) broadcastGameState();
+    }
+}
 
         function openChest(cellId, keyType) {
             const inv = inventories[currentPlayerIdx];
@@ -4113,14 +4119,27 @@
 
         function broadcastGameState() {
     if (!isHost) return;
-    const state = getFullGameState();
+    
+    // Creiamo uno stato "Lite" solo con ciò che serve al client del telefono
+    const liteState = {
+        players: players,
+        currentPlayerIdx: currentPlayerIdx,
+        gameState: gameState,
+        combatState: combatState,
+        isAnimating: isAnimating,
+        hasPerformedActionThisTurn: hasPerformedActionThisTurn,
+        activeCellId: activeCellId,
+        isWaitingExploratoryReroll: isWaitingExploratoryReroll,
+        playerConsumables: playerConsumables,
+        playerStats: playerStats
+    };
+
     try {
-        // Forza la serializzazione in stringa
-        const serializedState = JSON.stringify(state);
+        const serializedState = JSON.stringify(liteState);
         const dataToSend = { type: 'state_update', payload: serializedState };
         playerConns.forEach(p => p.conn.send(dataToSend));
     } catch (e) {
-        console.error("Errore durante la serializzazione dello stato di gioco:", e);
+        console.error("Errore durante la serializzazione dello stato Lite:", e);
     }
 }
 
@@ -4234,46 +4253,17 @@
             }
         }
 
-        // Riapplica lo stato
-        players = newState.players;
-        pvpOpponentIdx = newState.pvpOpponentIdx;
-        playerColors = newState.playerColors;
-        playerBgs = newState.playerBgs;
-        currentPlayerIdx = newState.currentPlayerIdx;
-        gameState = newState.gameState;
-        isAnimating = newState.isAnimating;
-        currentRound = newState.currentRound;
-        hasPerformedActionThisTurn = newState.hasPerformedActionThisTurn;
-        hasBoughtConsumableThisTurn = newState.hasBoughtConsumableThisTurn;
-        isWaitingExploratoryReroll = newState.isWaitingExploratoryReroll;
-        previousPlayerIdx = newState.previousPlayerIdx;
-        pawns = newState.pawns;
-        pawnRenderOrder = newState.pawnRenderOrder;
-        inventories = newState.inventories;
-        globalTokenPool = newState.globalTokenPool;
-        playerStats = newState.playerStats;
-        consumablesDeck = newState.consumablesDeck;
-        playerConsumables = newState.playerConsumables;
-        usedConsumables = newState.usedConsumables;
-        burnedConsumables = newState.burnedConsumables;
-        movesLeft = newState.movesLeft;
-        activeCellId = newState.activeCellId;
-        combatState = newState.combatState;
-        baseConsumablesData = newState.baseConsumablesData;
-        setupPlayerIdx = newState.setupPlayerIdx;
-        coordinateDeck = newState.coordinateDeck;
-        initialCoordinateDeck = newState.initialCoordinateDeck;
-        tileDeck = newState.tileDeck;
-        activeChests = newState.activeChests; 
-        baseEventsData = newState.baseEventsData;
-        eventDeck = newState.eventDeck;
-        eventHistory = newState.eventHistory;
-        currentEvent = newState.currentEvent;
-        currentDice = newState.currentDice;
-        pendingRerollCardId = newState.pendingRerollCardId;
-        combatSuccessBonus = newState.combatSuccessBonus;
-        pendingFours = newState.pendingFours;
-        boardState = newState.boardState; 
+        // Riapplica SOLO lo stato "Lite" necessario all'interfaccia
+        if (newState.players) players = newState.players;
+        if (newState.currentPlayerIdx !== undefined) currentPlayerIdx = newState.currentPlayerIdx;
+        if (newState.gameState) gameState = newState.gameState;
+        if (newState.combatState) combatState = newState.combatState;
+        if (newState.isAnimating !== undefined) isAnimating = newState.isAnimating;
+        if (newState.hasPerformedActionThisTurn !== undefined) hasPerformedActionThisTurn = newState.hasPerformedActionThisTurn;
+        if (newState.activeCellId !== undefined) activeCellId = newState.activeCellId;
+        if (newState.isWaitingExploratoryReroll !== undefined) isWaitingExploratoryReroll = newState.isWaitingExploratoryReroll;
+        if (newState.playerConsumables) playerConsumables = newState.playerConsumables;
+        if (newState.playerStats) playerStats = newState.playerStats;
 
         renderClientUI();
     } else if (data.type === 'action' && isHost) {
