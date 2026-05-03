@@ -804,7 +804,7 @@
 </head>
 <body>
 
-    <div id="version-display">v0.57</div>
+    <div id="version-display">v0.58</div>
 
     <div id="game-info-bar">
         <div class="info-bar-section" id="info-player"></div>
@@ -1544,12 +1544,11 @@
             let targetId = 'consumables-area';
             let isCombatMode = false;
             
-            // Smista la destinazione: PvE vs PvP
             if (gameState === 'event' && !combatState.startsWith('pvp_')) {
                 targetId = 'combat-consumables-wrapper';
                 isCombatMode = true;
             } else if (gameState === 'pvp_combat' || gameState === 'pvp_push' || gameState === 'pvp_stealing' || gameState === 'pvp_resolved_push') {
-                targetId = 'pvp-attacker-consumables'; // Nuova destinazione PvP
+                targetId = 'pvp-attacker-consumables'; 
                 isCombatMode = true;
             }
             
@@ -1557,9 +1556,9 @@
             if (!container) return;
             container.innerHTML = '';
 
-            // Se siamo in combattimento, aggiungiamo l'intestazione con il tasto occhio
             if (isCombatMode) {
                 const header = document.createElement('div');
+                // width: 100% garantisce che il titolo stia sopra e le carte sotto
                 header.style.cssText = "width: 100%; display: flex; justify-content: center; align-items: center; gap: 15px; margin-bottom: 15px; font-family: 'Pirata One', cursive; color: #f1c40f; font-size: 28px;";
                 header.innerHTML = `
                     Le tue Carte 
@@ -1569,6 +1568,40 @@
                 `;
                 container.appendChild(header);
             }
+
+            const hand = playerConsumables[currentPlayerIdx];
+            if (!hand || hand.length === 0) return;
+
+            hand.forEach((card) => {
+                const cardEl = document.createElement('div');
+                cardEl.className = 'consumable-card-ui';
+                
+                // ... (resto della logica per il contenuto della carta)
+                if (!areConsumablesVisible) {
+                    cardEl.innerHTML = `
+                        <div style="display:flex; justify-content:center; align-items:center; width:100%; height:100%; background:#2c3e50; border-radius:6px; font-size:70px; color:#f1c40f; font-family:'Pirata One';">
+                            ?
+                        </div>`;
+                    cardEl.style.borderColor = "#95a5a6";
+                } else {
+                    // (Logica per i bottoni Usa/Brucia...)
+                    let disableUse = false;
+                    if (card.type === 'Benda' && playerStats[currentPlayerIdx].hp >= playerStats[currentPlayerIdx].maxHp) disableUse = true;
+                    // ... (altre condizioni)
+                    
+                    cardEl.innerHTML = `
+                        <div class="cons-title">${card.type}</div>
+                        <div class="cons-icon">${card.icon}</div>
+                        <div class="cons-desc">${card.desc}</div>
+                        <div class="cons-actions">
+                            <button class="cons-btn btn-use" onclick="useConsumable('${card.id}')" ${disableUse ? 'disabled' : ''}>Usa</button>
+                            <button class="cons-btn btn-burn" onclick="burnConsumable('${card.id}')">2🪙</button>
+                        </div>
+                    `;
+                }
+                container.appendChild(cardEl);
+            });
+        }
 
             const hand = playerConsumables[currentPlayerIdx];
             if (!hand || hand.length === 0) return;
@@ -2375,7 +2408,6 @@
             document.getElementById('combat-card-ui').style.display = 'none';
             
             const playerSection = document.getElementById('pvp-player-section');
-            // Forziamo il layout a colonna per separare plance (sopra) e carte (sotto)
             playerSection.style.display = 'flex';
             playerSection.style.flexDirection = 'column';
             playerSection.style.alignItems = 'center';
@@ -2396,24 +2428,24 @@
 
             // --- RIGA INFERIORE: CARTE CONSUMABILI ---
             const cardsRow = document.createElement('div');
-            cardsRow.style.cssText = "display: flex; flex-direction: row; justify-content: space-around; align-items: flex-start; width: 100%;";
+            // Usiamo flex-row per mettere le due aree di carte una a sinistra e una a destra
+            cardsRow.style.cssText = "display: flex; flex-direction: row; justify-content: space-around; align-items: flex-start; width: 100%; gap: 20px;";
 
             const attackerConsumablesWrapper = document.createElement('div');
             attackerConsumablesWrapper.id = 'pvp-attacker-consumables';
-            attackerConsumablesWrapper.style.cssText = "display: flex; flex-direction: column; align-items: center; gap: 10px; min-height: 200px; flex: 1;";
+            // IMPORTANTE: flex-row + wrap per permettere alle carte di stare affiancate
+            attackerConsumablesWrapper.style.cssText = "display: flex; flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 10px; min-height: 200px; flex: 1;";
 
             const defenderConsumablesWrapper = document.createElement('div');
             defenderConsumablesWrapper.id = 'pvp-defender-consumables';
-            defenderConsumablesWrapper.style.cssText = "display: flex; gap: 10px; justify-content: center; min-height: 200px; flex: 1;";
+            defenderConsumablesWrapper.style.cssText = "display: flex; flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 10px; min-height: 200px; flex: 1;";
 
-            // Nel wrapper dell'attaccante le carte (e l'header col tasto occhio) verranno iniettate da renderConsumablesHand()
             cardsRow.appendChild(attackerConsumablesWrapper);
             cardsRow.appendChild(defenderConsumablesWrapper);
 
             playerSection.appendChild(boardsRow);
             playerSection.appendChild(cardsRow);
 
-            // Renderizza le carte di entrambi nei rispettivi contenitori
             renderHiddenConsumables(opponentIdx);
             renderConsumablesHand(); 
 
