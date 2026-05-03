@@ -804,7 +804,7 @@
 </head>
 <body>
 
-    <div id="version-display">v0.61</div>
+    <div id="version-display">v0.62</div>
 
     <div id="game-info-bar">
         <div class="info-bar-section" id="info-player"></div>
@@ -2447,13 +2447,9 @@
                             return;
                         }
                         
-                        const stealInfo = document.createElement('div');
-                        stealInfo.id = 'steal-info';
-                        stealInfo.textContent = 'Successo! Clicca una carta per rubarla.';
-                        stealInfo.style.cssText = 'color: #f1c40f; font-size: 20px; margin-bottom: 10px; width: 100%; text-align: center;';
-                        container.parentElement.insertBefore(stealInfo, container);
+                        // Chiama direttamente la funzione, il testo lo gestiamo lì dentro!
+                        renderHiddenConsumables(pvpOpponentIdx); 
 
-                        renderHiddenConsumables(pvpOpponentIdx); // This function sets up the onclick handlers
                     } else {
                         // No cards to steal, show a specific button before the push phase
                         combatState = 'pvp_pre_push';
@@ -2480,6 +2476,19 @@
             const container = document.getElementById('pvp-defender-consumables');
             if (!container) return;
             container.innerHTML = '';
+
+            // AGGIUNTA: Intestazione simmetrica per mantenere il layout intatto
+            const header = document.createElement('div');
+            if (combatState === 'pvp_stealing') {
+                header.id = 'steal-info';
+                header.textContent = 'Vittoria! Clicca una carta per rubarla.';
+                header.style.cssText = "width: 100%; text-align: center; color: #2ecc71; font-family: 'Pirata One', cursive; font-size: 28px; margin-bottom: 15px;";
+            } else {
+                header.textContent = 'Carte Avversario';
+                header.style.cssText = "width: 100%; text-align: center; color: #e74c3c; font-family: 'Pirata One', cursive; font-size: 28px; margin-bottom: 15px;";
+            }
+            container.appendChild(header);
+
             const hand = playerConsumables[opponentIdx];
 
             hand.forEach((card) => {
@@ -2495,7 +2504,7 @@
                 `;
                 cardContainer.onclick = () => {
                     if (combatState === 'pvp_stealing') {
-                        stealConsumable(card.id, cardContainer); // The element passed is now the card itself
+                        stealConsumable(card.id, cardContainer); 
                     }
                 };
                 container.appendChild(cardContainer);
