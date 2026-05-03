@@ -804,7 +804,7 @@
 </head>
 <body>
 
-    <div id="version-display">v0.58</div>
+    <div id="version-display">v0.59</div>
 
     <div id="game-info-bar">
         <div class="info-bar-section" id="info-player"></div>
@@ -1558,7 +1558,6 @@
 
             if (isCombatMode) {
                 const header = document.createElement('div');
-                // width: 100% garantisce che il titolo stia sopra e le carte sotto
                 header.style.cssText = "width: 100%; display: flex; justify-content: center; align-items: center; gap: 15px; margin-bottom: 15px; font-family: 'Pirata One', cursive; color: #f1c40f; font-size: 28px;";
                 header.innerHTML = `
                     Le tue Carte 
@@ -1576,7 +1575,6 @@
                 const cardEl = document.createElement('div');
                 cardEl.className = 'consumable-card-ui';
                 
-                // ... (resto della logica per il contenuto della carta)
                 if (!areConsumablesVisible) {
                     cardEl.innerHTML = `
                         <div style="display:flex; justify-content:center; align-items:center; width:100%; height:100%; background:#2c3e50; border-radius:6px; font-size:70px; color:#f1c40f; font-family:'Pirata One';">
@@ -1584,10 +1582,17 @@
                         </div>`;
                     cardEl.style.borderColor = "#95a5a6";
                 } else {
-                    // (Logica per i bottoni Usa/Brucia...)
                     let disableUse = false;
                     if (card.type === 'Benda' && playerStats[currentPlayerIdx].hp >= playerStats[currentPlayerIdx].maxHp) disableUse = true;
-                    // ... (altre condizioni)
+                    if (card.type === 'Magia del Tempo') {
+                        disableUse = true;
+                        if ((gameState === 'move' || gameState === 'build') && !hasPerformedActionThisTurn && !activeCellId && !isAnimating && !isWaitingExploratoryReroll) disableUse = false;
+                        if (gameState === 'event' && combatState === 'evaluating') disableUse = false;
+                    }
+                    if (card.type === 'Successo Assicurato') {
+                        disableUse = true;
+                        if (gameState === 'event' && (combatState === 'idle' || combatState === 'evaluating' || combatState === 'resolving_four')) disableUse = false;
+                    }
                     
                     cardEl.innerHTML = `
                         <div class="cons-title">${card.type}</div>
