@@ -800,10 +800,36 @@
             z-index: 9999;
             pointer-events: none;
         }
+        /* --- TOOLTIP OGGETTI --- */
+        #item-tooltip {
+            position: fixed;
+            background: rgba(10, 40, 70, 0.95);
+            color: white;
+            border: 2px solid #f1c40f;
+            border-radius: 8px;
+            padding: 10px 15px;
+            font-size: 15px;
+            font-family: 'Cause', sans-serif;
+            pointer-events: none; /* Impedisce che il mouse blocchi il drop */
+            z-index: 10000;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            max-width: 240px;
+            text-align: center;
+            display: none;
+        }
+        #item-tooltip h4 { 
+            margin: 0 0 8px 0; 
+            color: #f1c40f; 
+            font-family: 'Pirata One', cursive; 
+            font-size: 22px; 
+            letter-spacing: 1px; 
+            border-bottom: 1px solid rgba(255,255,255,0.2); 
+            padding-bottom: 4px;
+        }
     </style>
 </head>
 <body>
-
+    <div id="item-tooltip"></div>
     <div id="version-display">v0.63</div>
 
     <div id="game-info-bar">
@@ -1071,6 +1097,49 @@
         
         function getHeartIconSVG() {
             return `<svg viewBox="0 0 24 24" style="width: 100%; height: 100%;"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" fill="#e74c3c" stroke="white" stroke-width="1.5"/></svg>`;
+        }
+        // --- GESTIONE TOOLTIP OGGETTI ---
+        function getItemTooltipText(item, isEquipped = false) {
+            if (isEquipped) {
+                if (item === '💣') return "<h4>Cannone</h4>Fornisce <b>+1 permanente</b> in Combattimento.";
+                if (item === '🚢') return "<h4>Nave</h4>Fornisce <b>+1 Mossa extra</b> ad ogni turno.";
+                if (item === 'heart_upgrade') return "<h4>Cuore Extra</h4>Hai aumentato la tua Vita Massima di 1.";
+            } else {
+                if (item === '🪙') return "<h4>Moneta</h4>Accumulane 2 per comprare consumabili, o usale per pagare il dazio di alcuni eventi.";
+                if (item === 'key_red') return "<h4>Chiave Combattente</h4>Trascinala su un <b>Forziere</b> nella mappa per aprirlo e prendere la ricompensa Rossa.";
+                if (item === 'key_blue') return "<h4>Chiave Esploratore</h4>Trascinala su un <b>Forziere</b> nella mappa per aprirlo e prendere la ricompensa Blu.";
+                if (item === '💣') return "<h4>Cannone</h4>Trascinalo su uno <b>Slot Abilità sbloccato</b> sulla tua plancia per equipaggiarlo.";
+                if (item === '🚢') return "<h4>Nave</h4>Trascinala su uno <b>Slot Abilità sbloccato</b> sulla tua plancia per equipaggiarla.";
+                if (item === 'heart_upgrade') return "<h4>Cuore Extra</h4>Trascinalo su uno <b>Slot Abilità sbloccato</b> per equipaggiarlo e aumentare la Vita Massima.";
+            }
+            return "";
+        }
+
+        function showItemTooltip(e, item, isEquipped) {
+            const tooltip = document.getElementById('item-tooltip');
+            if (!tooltip) return;
+            tooltip.innerHTML = getItemTooltipText(item, isEquipped);
+            tooltip.style.display = 'block';
+            moveItemTooltip(e);
+        }
+
+        function moveItemTooltip(e) {
+            const tooltip = document.getElementById('item-tooltip');
+            if (!tooltip || tooltip.style.display === 'none') return;
+            
+            // Calcolo offset per non far uscire il tooltip dallo schermo
+            let x = e.clientX + 15;
+            let y = e.clientY + 15;
+            if (x + 240 > window.innerWidth) x = e.clientX - 255; 
+            if (y + 120 > window.innerHeight) y = e.clientY - 135;
+            
+            tooltip.style.left = x + 'px';
+            tooltip.style.top = y + 'px';
+        }
+
+        function hideItemTooltip() {
+            const tooltip = document.getElementById('item-tooltip');
+            if (tooltip) tooltip.style.display = 'none';
         }
 
         function copyJoinLink() {
@@ -3061,8 +3130,38 @@
                 for (let t = 1; t <= 3; t++) {
                     const lock = document.getElementById(`lock-${pIdx}-${t}`); const slotTop = document.getElementById(`slot-top-${pIdx}-${t}`); const slotBottom = document.getElementById(`slot-bottom-${pIdx}-${t}`);
                     const isUnlocked = playerStats[pIdx].exp >= t * 3 && playerStats[pIdx].cmb >= t * 3;
-                    if (isUnlocked) { lock.classList.add('unlocked'); slotTop.classList.add('active'); slotTop.innerHTML = getIcon(playerStats[pIdx].equipped[t].top) || ''; slotBottom.classList.add('active'); slotBottom.innerHTML = getIcon(playerStats[pIdx].equipped[t].bottom) || ''; } 
-                    else { lock.classList.remove('unlocked'); slotTop.classList.remove('active'); slotTop.innerHTML = ''; slotBottom.classList.remove('active'); slotBottom.innerHTML = ''; }
+                    if (isUnlocked) { 
+                        lock.classList.add('unlocked'); 
+                        
+                        slotTop.classList.add('active'); 
+                        const itemTop = playerStats[pIdx].equipped[t].top;
+                        slotTop.innerHTML = getIcon(itemTop) || ''; 
+                        if(itemTop) {
+                            slotTop.onmouseenter = (e) => showItemTooltip(e, itemTop, true);
+                            slotTop.onmousemove = moveItemTooltip;
+                            slotTop.onmouseleave = hideItemTooltip;
+                        } else {
+                            slotTop.onmouseenter = null; slotTop.onmousemove = null; slotTop.onmouseleave = null;
+                        }
+                        
+                        slotBottom.classList.add('active'); 
+                        const itemBottom = playerStats[pIdx].equipped[t].bottom;
+                        slotBottom.innerHTML = getIcon(itemBottom) || ''; 
+                        if(itemBottom) {
+                            slotBottom.onmouseenter = (e) => showItemTooltip(e, itemBottom, true);
+                            slotBottom.onmousemove = moveItemTooltip;
+                            slotBottom.onmouseleave = hideItemTooltip;
+                        } else {
+                            slotBottom.onmouseenter = null; slotBottom.onmousemove = null; slotBottom.onmouseleave = null;
+                        }
+                    } 
+                    else { 
+                        lock.classList.remove('unlocked'); 
+                        slotTop.classList.remove('active'); slotTop.innerHTML = ''; 
+                        slotTop.onmouseenter = null; slotTop.onmousemove = null; slotTop.onmouseleave = null;
+                        slotBottom.classList.remove('active'); slotBottom.innerHTML = ''; 
+                        slotBottom.onmouseenter = null; slotBottom.onmousemove = null; slotBottom.onmouseleave = null;
+                    }
                 }
 
                 const hpDots = document.getElementById(`hp-track-${pIdx}`).children;
@@ -3093,6 +3192,11 @@
                     const el = document.createElement('span'); 
                     el.className = 'inv-item';
                     
+                    // Aggiungi eventi tooltip a tutti gli elementi
+                    el.addEventListener('mouseenter', (e) => showItemTooltip(e, item, false));
+                    el.addEventListener('mousemove', moveItemTooltip);
+                    el.addEventListener('mouseleave', hideItemTooltip);
+                    
                     if (item === '🪙') {
                         el.innerHTML = `${item} <span style="font-size: 14px; font-weight:bold; font-family:'Cause', sans-serif;">x${count}</span>`;
                         coinsContainer.appendChild(el);
@@ -3102,6 +3206,7 @@
                         if (item === 'key_red' || item === 'key_blue') {
                             el.classList.add('draggable'); el.draggable = true;
                             el.addEventListener('dragstart', (e) => {
+                                hideItemTooltip(); // Nasconde il tooltip durante il drag
                                 if (pIdx !== currentPlayerIdx || (gameState !== 'move' && gameState !== 'build')) { e.preventDefault(); return; }
                                 e.dataTransfer.setData('application/json', JSON.stringify({type: 'key', item: item, pIdx: pIdx})); e.dataTransfer.effectAllowed = 'move';
                             });
@@ -3109,6 +3214,7 @@
                         else if (item === '🚢' || item === '💣' || item === 'heart_upgrade') {
                             el.classList.add('draggable'); el.draggable = true;
                             el.addEventListener('dragstart', (e) => {
+                                hideItemTooltip(); // Nasconde il tooltip durante il drag
                                 if (pIdx !== currentPlayerIdx || (gameState !== 'move' && gameState !== 'build')) { e.preventDefault(); return; }
                                 e.dataTransfer.setData('application/json', JSON.stringify({type: 'ability', item: item, pIdx: pIdx})); e.dataTransfer.effectAllowed = 'move';
                             });
