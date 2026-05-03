@@ -4247,6 +4247,7 @@
         function initializeDynamicHost() {
             isHost = true;
             expectedPlayerCount = 4;
+            clientConnectionCounter = 0; // Assicura che il primo telefono diventi il Giocatore 0
             
             // PULIZIA QR PRECEDENTE per evitare duplicati
             const qrContainer = document.getElementById('qr-code');
@@ -4266,7 +4267,8 @@
             });
 
             peer.on('connection', (conn) => {
-                if (playerConns.length >= 3) {
+                // Ora il limite è 4 dispositivi (il PC fa solo da tabellone)
+                if (playerConns.length >= 4) {
                     conn.on('open', () => { conn.send({ type: 'error', payload: 'Partita Piena' }); setTimeout(() => conn.close(), 500); });
                     return;
                 }
@@ -4500,17 +4502,16 @@
             }
         }
 
-        // Contatore aggiornato per pulsante dinamico e colori
+        // Contatore aggiornato per pulsante dinamico
         function updatePlayerCounter() {
-            // Conta solo i giocatori effettivamente connessi (0 all'inizio)
             const connectedClients = playerConns.length; 
             document.getElementById('player-counter').textContent = `Giocatori connessi: ${connectedClients} / 4`;
             
             const startBtn = document.getElementById('manual-start-game-btn');
-            // Il gioco può partire se c'è almeno un client connesso (totale 2 giocatori: Host + 1 Client)
-            if (connectedClients >= 1) {
+            // Il gioco può partire SOLO se ci sono almeno 2 telefoni connessi
+            if (connectedClients >= 2) {
                 startBtn.disabled = false;
-                startBtn.textContent = `Avvia Partita (${connectedClients + 1} Giocatori)`;
+                startBtn.textContent = `Avvia Partita (${connectedClients} Giocatori)`;
                 startBtn.style.backgroundColor = '#27ae60';
             } else {
                 startBtn.disabled = true;
