@@ -792,7 +792,7 @@
 </head>
 <body>
 
-    <div id="version-display">v0.53</div>
+    <div id="version-display">v0.54</div>
 
     <div id="game-info-bar">
         <div class="info-bar-section" id="info-player"></div>
@@ -1656,6 +1656,20 @@
                         </div>
                     </div>`;
                 showGlobalNotification(notificationHTML, 3000);
+            }
+        };
+
+        // Funzione globale che viene attivata dal bottone "Usa" sull'Host
+        window.useConsumable = function(id) {
+            if (isHost) {
+                _useConsumable(currentPlayerIdx, id);
+                updateBoardsUI();
+                renderConsumablesHand();
+                if (gameState === 'event' && combatState !== 'idle') {
+                    updateProvisionalCombatResult();
+                }
+                updateTurnUI();
+                broadcastGameState();
             }
         };
 
