@@ -4520,7 +4520,7 @@
             }
         }
 
-        // --- INIZIALIZZAZIONE AL CARICAMENTO DELLA PAGINA ---
+       // --- INIZIALIZZAZIONE AL CARICAMENTO DELLA PAGINA ---
         window.addEventListener('load', () => {
             const urlParams = new URLSearchParams(window.location.search);
             hostId = urlParams.get('host');
@@ -4530,8 +4530,9 @@
 
             document.getElementById('manual-start-game-btn').addEventListener('click', () => {
                 if (isHost && !document.getElementById('manual-start-game-btn').disabled) {
-                    const actualPlayerCount = playerConns.length + 1;
-                    expectedPlayerCount = actualPlayerCount; // Aggiorna il conteggio per coerenza
+                    // Nessun "+1", il numero di giocatori è esattamente il numero di telefoni connessi!
+                    const actualPlayerCount = playerConns.length; 
+                    expectedPlayerCount = actualPlayerCount; 
                     startGame(actualPlayerCount);
                 }
             });
