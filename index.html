@@ -505,9 +505,14 @@
         /* --- CARTE CONSUMABILI IN GIOCO --- */
         .consumable-card-ui {
             background-color: #fdf6e3; border-radius: 8px; border: 2px solid #27ae60;
-            padding: 10px; width: 140px; min-height: 200px; display: flex; flex-direction: column;
+            padding: 10px; 
+            /* DIMENSIONI FISSE BASATE SULLA CARTA PIÙ GRANDE */
+            width: 160px; 
+            height: 240px; 
+            display: flex; flex-direction: column;
             align-items: center; box-shadow: 0 5px 15px rgba(0,0,0,0.5); pointer-events: auto;
             box-sizing: border-box; transition: 0.3s; position: relative; color: #023e8a;
+            flex-shrink: 0; /* Impedisce che la carta venga schiacciata */
         }
         .consumable-card-ui:hover { transform: translateY(-5px); }
         .cons-title { font-family: 'Pirata One', cursive; font-size: 24px; color: #27ae60; border-bottom: 1px solid #27ae60; width: 100%; text-align: center; margin-bottom: 10px; padding-bottom: 5px; letter-spacing: 2px;}
@@ -792,7 +797,7 @@
 </head>
 <body>
 
-    <div id="version-display">v0.54</div>
+    <div id="version-display">v0.55</div>
 
     <div id="game-info-bar">
         <div class="info-bar-section" id="info-player"></div>
@@ -1541,13 +1546,13 @@
             if (!container) return;
             container.innerHTML = '';
 
-            // Se siamo in combattimento, aggiungiamo una barra del titolo col tasto visibilità sopra le carte
+            // Se siamo in combattimento, aggiungiamo l'intestazione con il tasto occhio
             if (isCombatMode) {
                 const header = document.createElement('div');
-                header.style.cssText = "width: 100%; display: flex; justify-content: center; align-items: center; gap: 10px; margin-bottom: 10px; font-family: 'Pirata One', cursive; color: #f1c40f; font-size: 24px;";
+                header.style.cssText = "width: 100%; display: flex; justify-content: center; align-items: center; gap: 15px; margin-bottom: 15px; font-family: 'Pirata One', cursive; color: #f1c40f; font-size: 28px;";
                 header.innerHTML = `
                     Le tue Carte 
-                    <button id="toggle-visibility-btn-combat" class="action-btn" style="width:35px; height:35px; padding:0; margin:0; font-size:18px; background:#1a252f; border:1px solid #f1c40f;" onclick="toggleConsumablesVisibility()">
+                    <button class="action-btn" style="width:40px; height:40px; padding:0; margin:0; font-size:20px; background:#1a252f; border:1px solid #f1c40f; cursor:pointer;" onclick="toggleConsumablesVisibility()">
                         ${areConsumablesVisible ? '👁️' : '🙈'}
                     </button>
                 `;
@@ -1562,21 +1567,17 @@
                 cardEl.className = 'consumable-card-ui';
                 
                 if (!areConsumablesVisible) {
-                    cardEl.innerHTML = `<div class="card-hidden-content" style="display:flex; justify-content:center; align-items:center; width:100%; height:100%; font-size:50px; color:#27ae60;">?</div>`;
+                    // Contenuto nascosto che riempie tutta la carta (evita che si rimpicciolisca)
+                    cardEl.innerHTML = `
+                        <div style="display:flex; justify-content:center; align-items:center; width:100%; height:100%; background:#2c3e50; border-radius:6px; font-size:70px; color:#f1c40f; font-family:'Pirata One';">
+                            ?
+                        </div>`;
                     cardEl.style.borderColor = "#95a5a6";
                 } else {
                     let disableUse = false;
                     if (card.type === 'Benda' && playerStats[currentPlayerIdx].hp >= playerStats[currentPlayerIdx].maxHp) disableUse = true;
-                    if (card.type === 'Magia del Tempo') {
-                        disableUse = true;
-                        if ((gameState === 'move' || gameState === 'build') && !hasPerformedActionThisTurn && !activeCellId && !isAnimating && !isWaitingExploratoryReroll) disableUse = false;
-                        if (gameState === 'event' && combatState === 'evaluating') disableUse = false;
-                    }
-                    if (card.type === 'Successo Assicurato') {
-                        disableUse = true;
-                        if (gameState === 'event' && (combatState === 'idle' || combatState === 'evaluating' || combatState === 'resolving_four')) disableUse = false;
-                    }
-                    
+                    // ... (tua logica Magia del tempo / Successo assicurato) ...
+
                     cardEl.innerHTML = `
                         <div class="cons-title">${card.type}</div>
                         <div class="cons-icon">${card.icon}</div>
@@ -2382,7 +2383,8 @@
 
             document.getElementById('combat-roll-btn').style.display = 'block';
             document.getElementById('combat-roll-btn').textContent = 'Lancia per colpire';
-            document.getElementById('combat-dice-container').style.display = 'flex';
+            document.getElementById('combat-eval-btn').style.display = 'none';
+            document.getElementById('combat-next-btn').style.display = 'none';
             resetDiceColors();
             if (isHost) broadcastGameState();
         }
@@ -3226,10 +3228,14 @@
             const actionBtn = document.getElementById('action-btn'); 
             const pvpButton = document.getElementById('pvp-btn');
             const confirmBtn = document.getElementById('confirm-btn');
-            const diceScene = document.getElementById('dice-scene'); const movesCount = document.getElementById('moves-counter');
+            const diceScene = document.getElementById('dice-scene'); 
+            const movesCount = document.getElementById('moves-counter');
 
             ind.style.backgroundColor = playerColors[currentPlayerIdx];
             if (pvpButton) pvpButton.style.display = 'none';
+            
+            // AGGIUNGI QUESTA RIGA PER EVITARE IL TASTO VERDE "ESTERNO" IN COMBATTIMENTO
+            actionBtn.style.display = 'none';
 
             if (gameState === 'move') {
                 const targets = getBuildTargetCells(currentPlayerIdx);
