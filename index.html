@@ -573,7 +573,7 @@
             flex-wrap: nowrap; /* Obbliga le carte su una singola riga orizzontale */
             overflow-x: auto;  /* Abilita lo swipe orizzontale col dito */
             overflow-y: hidden; /* Niente scroll verticale accidentale */
-            justify-content: center; /* Le carte partono dal centro */
+            justify-content: flex-start; /* Fondamentale: impedisce che le carte escano a sinistra */
             align-items: center; /* Centra le carte verticalmente */
             flex-grow: 1;
             width: 100%;
@@ -892,7 +892,10 @@
                 <h2 style="font-size: 36px; color: #f1c40f; margin-top:0;">Condividi per giocare!</h2>
                 <p>Gli altri giocatori devono scansionare questo QR code o usare il link.</p>
                 <div id="qr-code" style="margin: 25px auto;"></div>
-                <p id="join-link" style="font-size: 14px; opacity: 0.8;"></p>
+                <div style="display: flex; align-items: center; justify-content: center; gap: 10px; background: rgba(0,0,0,0.3); padding: 10px 15px; border-radius: 8px; word-wrap: break-word;">
+                    <span id="join-link" style="font-size: 14px; opacity: 0.8; text-align: left; flex-grow: 1; word-break: break-all;"></span>
+                    <button id="copy-link-btn" onclick="copyJoinLink()" style="background: #f1c40f; color: #1a252f; border: none; border-radius: 5px; padding: 5px 10px; font-family: 'Cause', sans-serif; font-weight: bold; cursor: pointer; flex-shrink: 0;">Copia</button>
+                </div>
                 <h3 id="player-counter" style="color: #2ecc71; font-size: 24px;">Giocatori connessi: 0 / 4</h3>
                 <button id="manual-start-game-btn" class="btn-large" style="margin-top: 20px; background-color: #7f8c8d; font-size: 24px;" disabled>In attesa (Min 2 giocatori)</button>
             </div>
@@ -1068,6 +1071,28 @@
         
         function getHeartIconSVG() {
             return `<svg viewBox="0 0 24 24" style="width: 100%; height: 100%;"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" fill="#e74c3c" stroke="white" stroke-width="1.5"/></svg>`;
+        }
+
+        function copyJoinLink() {
+            const linkText = document.getElementById('join-link').textContent;
+            if (!linkText || !navigator.clipboard) return;
+
+            navigator.clipboard.writeText(linkText).then(() => {
+                const copyBtn = document.getElementById('copy-link-btn');
+                if (!copyBtn) return;
+                const originalText = copyBtn.textContent;
+                copyBtn.textContent = 'Copiato!';
+                copyBtn.disabled = true;
+                copyBtn.style.background = '#27ae60';
+                copyBtn.style.color = 'white';
+
+                setTimeout(() => {
+                    copyBtn.textContent = originalText;
+                    copyBtn.disabled = false;
+                    copyBtn.style.background = '#f1c40f';
+                    copyBtn.style.color = '#1a252f';
+                }, 2000);
+            }).catch(err => { console.error('Errore durante la copia del link: ', err); alert('Impossibile copiare il link. Copialo manualmente.'); });
         }
 
         function updateInfoBar() {
