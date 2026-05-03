@@ -427,6 +427,13 @@
             transform: scale(0.75);
             box-shadow: 0 2px 8px rgba(0,0,0,0.4);
         }
+        /* NUOVA CLASSE PER IL DIFENSORE IN PVP */
+        .player-board.defender-board {
+            transform: scale(1) !important;
+            border-color: #e74c3c !important;
+            box-shadow: 0 10px 25px rgba(231, 76, 60, 0.5) !important;
+            z-index: 10;
+        }
         .board-left { display: flex; flex-direction: column; gap: 6px; white-space: nowrap; }
         .board-right { 
             width: 25px; display: flex; flex-direction: column; align-items: center; 
@@ -580,13 +587,13 @@
         
         /* Carte a dimensione REALE (esattamente come da PC) */
         #client-consumables-area .consumable-card-ui {
-            width: 140px;
-            min-height: 200px;
-            flex: 0 0 auto; /* La carta non si schiaccia né si restringe MAI */
-            transform: none; /* Rimosso il ridimensionamento che causava bug grafici */
+            width: 160px;  /* Dimensione fissa corretta */
+            height: 240px; /* Dimensione fissa corretta */
+            flex: 0 0 auto; 
+            transform: none; 
             margin: 0;
-            overflow: visible; /* Lascia lo spazio necessario alla struttura interna */
-            scroll-snap-align: center; /* Quando scorri, la carta si ferma "a calamita" al centro */
+            overflow: visible; 
+            scroll-snap-align: center; 
         }
 
         #client-status-message {
@@ -797,7 +804,7 @@
 </head>
 <body>
 
-    <div id="version-display">v0.55</div>
+    <div id="version-display">v0.56</div>
 
     <div id="game-info-bar">
         <div class="info-bar-section" id="info-player"></div>
@@ -1537,8 +1544,12 @@
             let targetId = 'consumables-area';
             let isCombatMode = false;
             
-            if (gameState === 'event' || gameState === 'pvp_combat' || gameState === 'pvp_push' || gameState === 'pvp_stealing') {
+            // Smista la destinazione: PvE vs PvP
+            if (gameState === 'event' && !combatState.startsWith('pvp_')) {
                 targetId = 'combat-consumables-wrapper';
+                isCombatMode = true;
+            } else if (gameState === 'pvp_combat' || gameState === 'pvp_push' || gameState === 'pvp_stealing' || gameState === 'pvp_resolved_push') {
+                targetId = 'pvp-attacker-consumables'; // Nuova destinazione PvP
                 isCombatMode = true;
             }
             
@@ -1567,7 +1578,7 @@
                 cardEl.className = 'consumable-card-ui';
                 
                 if (!areConsumablesVisible) {
-                    // Contenuto nascosto che riempie tutta la carta (evita che si rimpicciolisca)
+                    // Contenuto nascosto che riempie tutta la carta
                     cardEl.innerHTML = `
                         <div style="display:flex; justify-content:center; align-items:center; width:100%; height:100%; background:#2c3e50; border-radius:6px; font-size:70px; color:#f1c40f; font-family:'Pirata One';">
                             ?
@@ -1576,7 +1587,16 @@
                 } else {
                     let disableUse = false;
                     if (card.type === 'Benda' && playerStats[currentPlayerIdx].hp >= playerStats[currentPlayerIdx].maxHp) disableUse = true;
-                    // ... (tua logica Magia del tempo / Successo assicurato) ...
+                    // Logiche carte...
+                    if (card.type === 'Magia del Tempo') {
+                        disableUse = true;
+                        if ((gameState === 'move' || gameState === 'build') && !hasPerformedActionThisTurn && !activeCellId && !isAnimating && !isWaitingExploratoryReroll) disableUse = false;
+                        if (gameState === 'event' && combatState === 'evaluating') disableUse = false;
+                    }
+                    if (card.type === 'Successo Assicurato') {
+                        disableUse = true;
+                        if (gameState === 'event' && (combatState === 'idle' || combatState === 'evaluating' || combatState === 'resolving_four')) disableUse = false;
+                    }
 
                     cardEl.innerHTML = `
                         <div class="cons-title">${card.type}</div>
@@ -2358,33 +2378,46 @@
             const playerSection = document.getElementById('pvp-player-section');
             playerSection.innerHTML = '';
 
-            // Zone: Attaccante e Difensore
+            // Zone: Attaccante e Difensore incolonnate per ospitare le plance e le carte
             const attackerZone = document.createElement('div');
+            attackerZone.style.cssText = "display: flex; flex-direction: column; align-items: center;";
+            
             const vsZone = document.createElement('div');
-            const defenderZone = document.createElement('div');
             vsZone.textContent = 'VS';
-            vsZone.style.cssText = "font-family: 'Pirata One', cursive; font-size: 80px; color: #f1c40f; align-self: center;";
+            vsZone.style.cssText = "font-family: 'Pirata One', cursive; font-size: 80px; color: #f1c40f; margin-top: 100px;";
 
+            const defenderZone = document.createElement('div');
+            defenderZone.style.cssText = "display: flex; flex-direction: column; align-items: center;";
+
+            // Plance
             attackerZone.appendChild(document.getElementById('board-' + currentPlayerIdx));
             defenderZone.appendChild(document.getElementById('board-' + opponentIdx));
 
-            // MOSTRAMO LE CARTE DEL DIFENSORE SOTTO LA PLANCIA (HIDDEN)
+            // WRAPPER CARTE ATTACCANTE (Nuovo: ospiterà le carte e l'occhio)
+            const attackerConsumablesWrapper = document.createElement('div');
+            attackerConsumablesWrapper.id = 'pvp-attacker-consumables';
+            attackerConsumablesWrapper.style.cssText = "display: flex; gap: 10px; justify-content: center; margin-top: 15px; min-height: 200px; width: 100%;";
+            attackerZone.appendChild(attackerConsumablesWrapper);
+
+            // WRAPPER CARTE DIFENSORE
             const defenderConsumablesWrapper = document.createElement('div');
             defenderConsumablesWrapper.id = 'pvp-defender-consumables';
-            defenderConsumablesWrapper.style.cssText = "display: flex; gap: 10px; justify-content: center; margin-top: 15px; min-height: 200px;";
+            defenderConsumablesWrapper.style.cssText = "display: flex; gap: 10px; justify-content: center; margin-top: 15px; min-height: 200px; width: 100%;";
             defenderZone.appendChild(defenderConsumablesWrapper);
 
             playerSection.appendChild(attackerZone);
             playerSection.appendChild(vsZone);
             playerSection.appendChild(defenderZone);
 
-            // Se l'opponent ha carte, le renderizziamo coperte
+            // Renderizza le carte di entrambi
             renderHiddenConsumables(opponentIdx);
+            renderConsumablesHand(); // Aggiornato per renderizzare nella nuova zona PvP
 
             document.getElementById('combat-roll-btn').style.display = 'block';
             document.getElementById('combat-roll-btn').textContent = 'Lancia per colpire';
             document.getElementById('combat-eval-btn').style.display = 'none';
             document.getElementById('combat-next-btn').style.display = 'none';
+            document.getElementById('combat-dice-container').style.display = 'flex';
             resetDiceColors();
             if (isHost) broadcastGameState();
         }
@@ -2966,8 +2999,13 @@
 
                 const isSetupOrInit = (gameState === 'setup' || gameState === 'init');
                 const isActive = (pIdx === currentPlayerIdx);
+                // Controlla se il giocatore è il difensore nel combattimento PvP
+                const isPvPDefender = (gameState === 'pvp_combat' || gameState === 'pvp_push' || gameState === 'pvp_stealing' || gameState === 'pvp_resolved_push') && (pIdx === pvpOpponentIdx);
+
+                // Assegnazione classi corretta
                 board.classList.toggle('active-board', isActive && !isSetupOrInit);
-                board.classList.toggle('inactive-board', !isActive && !isSetupOrInit);
+                board.classList.toggle('inactive-board', !isActive && !isSetupOrInit && !isPvPDefender);
+                board.classList.toggle('defender-board', isPvPDefender);
                 
                 const vpTrack = document.getElementById(`vp-track-${pIdx}`);
                 const vpDots = vpTrack.children;
