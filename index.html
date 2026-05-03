@@ -872,23 +872,24 @@
             <p style="margin-top: 30px; font-size: 16px;">Per unirti a una partita, apri il link o scansiona il QR code fornito dall'host.</p>
         </div>
 
-        <div id="host-layout-container" style="display: none; justify-content: center; align-items: stretch; gap: 40px; max-width: 1000px; width: 100%;">
+        <div id="host-layout-container" style="display: none; position: relative; width: 100%; height: auto; justify-content: center; align-items: center;">
             
-            <div id="host-modal" style="display: block; flex: 1;">
+            <div style="width: 200px; flex-shrink: 0;"></div>
+
+            <div id="host-modal" style="display: block; width: 450px; flex-shrink: 0; z-index: 10;">
                 <h2 style="font-size: 36px; color: #f1c40f; margin-top:0;">Condividi per giocare!</h2>
                 <p>Gli altri giocatori devono scansionare questo QR code o usare il link.</p>
-                <div id="qr-code"></div>
-                <p id="join-link"></p>
-                <h3 id="player-counter" style="color: #2ecc71; font-size: 24px;">Giocatori: 1 / 4</h3>
-                <button id="manual-start-game-btn" class="btn-large" style="margin-top: 20px; background-color: #7f8c8d; transition: background-color 0.3s;" disabled>In attesa (Min 2 giocatori)</button>
+                <div id="qr-code" style="margin: 25px auto;"></div>
+                <p id="join-link" style="font-size: 14px; opacity: 0.8;"></p>
+                <h3 id="player-counter" style="color: #2ecc71; font-size: 24px;">Giocatori connessi: 0 / 4</h3>
+                <button id="manual-start-game-btn" class="btn-large" style="margin-top: 20px; background-color: #7f8c8d; font-size: 24px;" disabled>In attesa (Min 2 giocatori)</button>
             </div>
 
-            <div style="display: flex; flex-direction: column; justify-content: center;">
-                <button id="open-testing-btn" class="btn-large" style="background-color: #95a5a6; padding: 20px 40px; border: 2px solid #f1c40f; display: flex; align-items: center; gap: 10px;">
+            <div style="width: 200px; flex-shrink: 0; display: flex; justify-content: flex-start; padding-left: 20px;">
+                <button id="open-testing-btn" class="btn-large" style="background-color: #95a5a6; padding: 15px 25px; border: 2px solid #f1c40f; font-size: 22px;">
                     ⚙️ Testing
                 </button>
             </div>
-            
         </div>
 
         <div id="player-select-screen" style="display: none; text-align: center; background: rgba(10, 40, 70, 0.98); padding: 40px; border-radius: 20px; border: 2px solid #f1c40f; box-shadow: 0 10px 40px rgba(0,0,0,0.6);">
@@ -1529,85 +1530,65 @@
 
         function renderConsumablesHand() {
             let targetId = 'consumables-area';
-            if (gameState === 'event' && currentEvent && !currentEvent.isPublic) {
+            let isCombatMode = false;
+            
+            if (gameState === 'event' || gameState === 'pvp_combat' || gameState === 'pvp_push' || gameState === 'pvp_stealing') {
                 targetId = 'combat-consumables-wrapper';
+                isCombatMode = true;
             }
             
-            document.getElementById('consumables-area').innerHTML = '';
-            const combatWrapper = document.getElementById('combat-consumables-wrapper');
-            if (combatWrapper) combatWrapper.innerHTML = '';
-
             const container = document.getElementById(targetId);
             if (!container) return;
+            container.innerHTML = '';
 
-            const titleBar = document.getElementById('consumables-area-title');
-            if (titleBar) {
-                titleBar.style.backgroundColor = playerColors[currentPlayerIdx];
+            // Se siamo in combattimento, aggiungiamo una barra del titolo col tasto visibilità sopra le carte
+            if (isCombatMode) {
+                const header = document.createElement('div');
+                header.style.cssText = "width: 100%; display: flex; justify-content: center; align-items: center; gap: 10px; margin-bottom: 10px; font-family: 'Pirata One', cursive; color: #f1c40f; font-size: 24px;";
+                header.innerHTML = `
+                    Le tue Carte 
+                    <button id="toggle-visibility-btn-combat" class="action-btn" style="width:35px; height:35px; padding:0; margin:0; font-size:18px; background:#1a252f; border:1px solid #f1c40f;" onclick="toggleConsumablesVisibility()">
+                        ${areConsumablesVisible ? '👁️' : '🙈'}
+                    </button>
+                `;
+                container.appendChild(header);
             }
 
             const hand = playerConsumables[currentPlayerIdx];
             if (!hand || hand.length === 0) return;
 
-            // Capiamo se stiamo guardando lo schermo dell'Host o del Client
-            const isClientView = document.getElementById('client-controller-overlay').style.display !== 'none';
-
-            hand.forEach((card, index) => {
+            hand.forEach((card) => {
                 const cardEl = document.createElement('div');
                 cardEl.className = 'consumable-card-ui';
-                if (hand.length > 3) cardEl.classList.add('cons-warning');
                 
-                // --- LOGICA PRIVACY ---
-                // Se siamo sull'Host e l'occhio è chiuso, nascondi la carta
-                if (!isClientView && !areConsumablesVisible) {
+                if (!areConsumablesVisible) {
                     cardEl.innerHTML = `<div class="card-hidden-content" style="display:flex; justify-content:center; align-items:center; width:100%; height:100%; font-size:50px; color:#27ae60;">?</div>`;
                     cardEl.style.borderColor = "#95a5a6";
-                    cardEl.style.justifyContent = "center";
-                    container.appendChild(cardEl);
-                    return; // Passa alla prossima carta senza renderizzare i bottoni
+                } else {
+                    let disableUse = false;
+                    if (card.type === 'Benda' && playerStats[currentPlayerIdx].hp >= playerStats[currentPlayerIdx].maxHp) disableUse = true;
+                    if (card.type === 'Magia del Tempo') {
+                        disableUse = true;
+                        if ((gameState === 'move' || gameState === 'build') && !hasPerformedActionThisTurn && !activeCellId && !isAnimating && !isWaitingExploratoryReroll) disableUse = false;
+                        if (gameState === 'event' && combatState === 'evaluating') disableUse = false;
+                    }
+                    if (card.type === 'Successo Assicurato') {
+                        disableUse = true;
+                        if (gameState === 'event' && (combatState === 'idle' || combatState === 'evaluating' || combatState === 'resolving_four')) disableUse = false;
+                    }
+                    
+                    cardEl.innerHTML = `
+                        <div class="cons-title">${card.type}</div>
+                        <div class="cons-icon">${card.icon}</div>
+                        <div class="cons-desc">${card.desc}</div>
+                        <div class="cons-actions">
+                            <button class="cons-btn btn-use" onclick="useConsumable('${card.id}')" ${disableUse ? 'disabled' : ''}>Usa</button>
+                            <button class="cons-btn btn-burn" onclick="burnConsumable('${card.id}')">2🪙</button>
+                        </div>
+                    `;
                 }
-
-                // --- RENDER NORMALE SE VISIBILE ---
-                let disableUse = false;
-                if (card.type === 'Benda' && playerStats[currentPlayerIdx].hp >= playerStats[currentPlayerIdx].maxHp) {
-                    disableUse = true;
-                }
-                if (card.type === 'Magia del Tempo') {
-                    disableUse = true;
-                    if ((gameState === 'move' || gameState === 'build') && !hasPerformedActionThisTurn && !activeCellId && !isAnimating && !isWaitingExploratoryReroll) disableUse = false;
-                    if (gameState === 'event' && combatState === 'evaluating') disableUse = false;
-                }
-                if (card.type === 'Successo Assicurato') {
-                    disableUse = true;
-                    if (gameState === 'event' && (combatState === 'idle' || combatState === 'evaluating' || combatState === 'resolving_four')) disableUse = false;
-                }
-                
-                let useBtnAttr = disableUse ? 'disabled' : '';
-
-                cardEl.innerHTML = `
-                    <div class="cons-title">${card.type}</div>
-                    <div class="cons-icon">${card.icon}</div>
-                    <div class="cons-desc">${card.desc}</div>
-                    <div class="cons-actions">
-                        <button class="cons-btn btn-use" onclick="useConsumable('${card.id}')" ${useBtnAttr}>Usa</button>
-                        <button class="cons-btn btn-burn" onclick="burnConsumable('${card.id}')">2🪙</button>
-                    </div>
-                `;
                 container.appendChild(cardEl);
             });
-
-            // Gestione del bottone Termina Turno / Scarta
-            const nextBtn = document.getElementById('combat-next-btn');
-            if (nextBtn && nextBtn.style.display !== 'none' && (nextBtn.textContent.includes('Scarta') || nextBtn.textContent === 'Termina turno')) {
-                const handSize = playerConsumables[currentPlayerIdx].length;
-                if (handSize > 3) {
-                    const toDiscard = handSize - 3;
-                    nextBtn.textContent = `Scarta (${toDiscard})`;
-                    nextBtn.className = 'btn-large btn-red';
-                } else {
-                    nextBtn.textContent = 'Termina turno';
-                    nextBtn.className = 'btn-large';
-                }
-            }
         }
 
         function _useConsumable(pIdx, id) {
@@ -2351,70 +2332,44 @@
             gameState = 'pvp_combat';
             combatState = 'pvp_idle';
             pvpOpponentIdx = opponentIdx;
-
             updateTurnUI();
 
             const overlay = document.getElementById('combat-overlay');
             overlay.style.display = 'flex';
-
-            // --- Imposta il layout corretto per il PvP ---
             document.getElementById('pve-player-section').style.display = 'none';
             document.getElementById('pvp-player-section').style.display = 'flex';
             document.getElementById('combat-card-ui').style.display = 'none';
-            document.getElementById('ec-outcome-overlay').style.display = 'none';
             
-            const combatLayout = document.getElementById('combat-layout');
-            combatLayout.style.justifyContent = 'space-evenly';
-
             const playerSection = document.getElementById('pvp-player-section');
-            playerSection.innerHTML = ''; // Svuota per ricostruire
+            playerSection.innerHTML = '';
 
-            // Crea le 3 zone: Attaccante, VS, Difensore
+            // Zone: Attaccante e Difensore
             const attackerZone = document.createElement('div');
             const vsZone = document.createElement('div');
             const defenderZone = document.createElement('div');
-
             vsZone.textContent = 'VS';
-            vsZone.style.cssText = "font-family: 'Pirata One', cursive; font-size: 100px; color: #f1c40f; align-self: center; text-shadow: 0 5px 15px rgba(0,0,0,0.5);";
+            vsZone.style.cssText = "font-family: 'Pirata One', cursive; font-size: 80px; color: #f1c40f; align-self: center;";
 
-            const attackerBoard = document.getElementById('board-' + currentPlayerIdx);
-            const defenderBoard = document.getElementById('board-' + opponentIdx);
-            attackerZone.appendChild(attackerBoard);
-            defenderZone.appendChild(defenderBoard);
+            attackerZone.appendChild(document.getElementById('board-' + currentPlayerIdx));
+            defenderZone.appendChild(document.getElementById('board-' + opponentIdx));
 
+            // MOSTRAMO LE CARTE DEL DIFENSORE SOTTO LA PLANCIA (HIDDEN)
             const defenderConsumablesWrapper = document.createElement('div');
             defenderConsumablesWrapper.id = 'pvp-defender-consumables';
-            defenderConsumablesWrapper.style.cssText = `display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; max-width: 450px; min-height: 220px; margin-top: 20px; border-radius: 10px; padding: 10px; align-content: flex-start;`;
+            defenderConsumablesWrapper.style.cssText = "display: flex; gap: 10px; justify-content: center; margin-top: 15px; min-height: 200px;";
             defenderZone.appendChild(defenderConsumablesWrapper);
 
             playerSection.appendChild(attackerZone);
             playerSection.appendChild(vsZone);
             playerSection.appendChild(defenderZone);
 
-            // Anima le plance
-            [attackerBoard, defenderBoard].forEach(board => {
-                if (!board) return;
-                board.style.transform = 'scale(0.8)';
-                board.style.opacity = '0';
-                requestAnimationFrame(() => {
-                    board.style.transition = 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s';
-                    board.style.transform = 'scale(1.0)';
-                    board.style.opacity = '1';
-                });
-            });
+            // Se l'opponent ha carte, le renderizziamo coperte
+            renderHiddenConsumables(opponentIdx);
 
-            // --- Configura dadi e azioni ---
-            const rollBtn = document.getElementById('combat-roll-btn');
-            rollBtn.style.display = 'block';
-            rollBtn.textContent = 'Lancia per colpire';
-
+            document.getElementById('combat-roll-btn').style.display = 'block';
+            document.getElementById('combat-roll-btn').textContent = 'Lancia per colpire';
             document.getElementById('combat-dice-container').style.display = 'flex';
-            document.getElementById('combat-eval-btn').style.display = 'none';
-            document.getElementById('combat-next-btn').style.display = 'none';
-
             resetDiceColors();
-            document.getElementById('cube-1').style.transition = 'none'; document.getElementById('cube-1').style.transform = `rotateX(0deg) rotateY(0deg)`;
-            document.getElementById('cube-2').style.transition = 'none'; document.getElementById('cube-2').style.transform = `rotateX(0deg) rotateY(0deg)`;
             if (isHost) broadcastGameState();
         }
 
@@ -4196,47 +4151,41 @@
         // Nuova logica dinamica per il menu principale
         function initializeDynamicHost() {
             isHost = true;
-            expectedPlayerCount = 4; // Limite massimo assoluto
+            expectedPlayerCount = 4;
             
+            // PULIZIA QR PRECEDENTE per evitare duplicati
+            const qrContainer = document.getElementById('qr-code');
+            qrContainer.innerHTML = ''; 
+
             peer = new Peer();
             peer.on('open', (id) => {
                 myPeerId = id;
                 const joinURL = `${window.location.href.split('?')[0]}?host=${id}`;
                 document.getElementById('join-link').textContent = joinURL;
-                new QRCode(document.getElementById("qr-code"), {
+                new QRCode(qrContainer, {
                     text: joinURL,
                     width: 200,
                     height: 200,
                 });
-                updatePlayerCounter();
+                updatePlayerCounter(); // Forza lo 0 iniziale
             });
 
             peer.on('connection', (conn) => {
-                // Rifiuta connessioni se ci sono già 4 giocatori totali (Host + 3 Client)
                 if (playerConns.length >= 3) {
-                    conn.on('open', () => {
-                        conn.send({ type: 'error', payload: 'Partita Piena (Max 4 giocatori)' });
-                        setTimeout(() => conn.close(), 500);
-                    });
+                    conn.on('open', () => { conn.send({ type: 'error', payload: 'Partita Piena' }); setTimeout(() => conn.close(), 500); });
                     return;
                 }
-
                 const playerIndex = clientConnectionCounter++; 
                 const newPlayer = { conn: conn, playerIndex: playerIndex };
-                
                 conn.on('open', () => {
                     playerConns.push(newPlayer);
                     setTimeout(() => {
                         conn.send({ type: 'assign_player', payload: { playerIndex: playerIndex } });
-                        const state = getFullGameState();
-                        conn.send({ type: 'state_update', payload: JSON.stringify(state) });
+                        conn.send({ type: 'state_update', payload: JSON.stringify(getFullGameState()) });
                         updatePlayerCounter();
                     }, 200);
                 });
-
                 conn.on('data', (data) => handleDataReceived(data, conn.peer));
-                
-                // Aggiorna il contatore se qualcuno si disconnette prima dell'inizio
                 conn.on('close', () => {
                     playerConns = playerConns.filter(p => p.conn.peer !== conn.peer);
                     updatePlayerCounter();
@@ -4458,23 +4407,20 @@
 
         // Contatore aggiornato per pulsante dinamico e colori
         function updatePlayerCounter() {
-            // Totale giocatori: 1 (Host che gioca) + numero di client connessi
-            const totalPlayers = playerConns.length + 1; 
-            document.getElementById('player-counter').textContent = `Giocatori connessi: ${totalPlayers} / 4`;
+            // Conta solo i giocatori effettivamente connessi (0 all'inizio)
+            const connectedClients = playerConns.length; 
+            document.getElementById('player-counter').textContent = `Giocatori connessi: ${connectedClients} / 4`;
             
             const startBtn = document.getElementById('manual-start-game-btn');
-            if (startBtn) {
-                if (totalPlayers >= 2 && totalPlayers <= 4) {
-                    startBtn.disabled = false;
-                    startBtn.textContent = `Avvia Partita (${totalPlayers} Giocatori)`;
-                    startBtn.style.backgroundColor = '#27ae60'; // Verde
-                    startBtn.style.cursor = 'pointer';
-                } else {
-                    startBtn.disabled = true;
-                    startBtn.textContent = 'In attesa (Min 2 giocatori)';
-                    startBtn.style.backgroundColor = '#7f8c8d'; // Grigio
-                    startBtn.style.cursor = 'not-allowed';
-                }
+            // Il gioco può partire se c'è almeno un client connesso (totale 2 giocatori: Host + 1 Client)
+            if (connectedClients >= 1) {
+                startBtn.disabled = false;
+                startBtn.textContent = `Avvia Partita (${connectedClients + 1} Giocatori)`;
+                startBtn.style.backgroundColor = '#27ae60';
+            } else {
+                startBtn.disabled = true;
+                startBtn.textContent = 'In attesa (Min 2 giocatori)';
+                startBtn.style.backgroundColor = '#7f8c8d';
             }
         }
 
