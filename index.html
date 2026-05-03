@@ -804,7 +804,7 @@
 </head>
 <body>
 
-    <div id="version-display">v0.56</div>
+    <div id="version-display">v0.57</div>
 
     <div id="game-info-bar">
         <div class="info-bar-section" id="info-player"></div>
@@ -2372,46 +2372,50 @@
             const overlay = document.getElementById('combat-overlay');
             overlay.style.display = 'flex';
             document.getElementById('pve-player-section').style.display = 'none';
-            document.getElementById('pvp-player-section').style.display = 'flex';
             document.getElementById('combat-card-ui').style.display = 'none';
             
             const playerSection = document.getElementById('pvp-player-section');
+            // Forziamo il layout a colonna per separare plance (sopra) e carte (sotto)
+            playerSection.style.display = 'flex';
+            playerSection.style.flexDirection = 'column';
+            playerSection.style.alignItems = 'center';
+            playerSection.style.width = '100%';
             playerSection.innerHTML = '';
 
-            // Zone: Attaccante e Difensore incolonnate per ospitare le plance e le carte
-            const attackerZone = document.createElement('div');
-            attackerZone.style.cssText = "display: flex; flex-direction: column; align-items: center;";
-            
+            // --- RIGA SUPERIORE: PLANCE ---
+            const boardsRow = document.createElement('div');
+            boardsRow.style.cssText = "display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 50px; width: 100%; margin-top: 40px; margin-bottom: 20px;";
+
             const vsZone = document.createElement('div');
             vsZone.textContent = 'VS';
-            vsZone.style.cssText = "font-family: 'Pirata One', cursive; font-size: 80px; color: #f1c40f; margin-top: 100px;";
+            vsZone.style.cssText = "font-family: 'Pirata One', cursive; font-size: 80px; color: #f1c40f;";
 
-            const defenderZone = document.createElement('div');
-            defenderZone.style.cssText = "display: flex; flex-direction: column; align-items: center;";
+            boardsRow.appendChild(document.getElementById('board-' + currentPlayerIdx));
+            boardsRow.appendChild(vsZone);
+            boardsRow.appendChild(document.getElementById('board-' + opponentIdx));
 
-            // Plance
-            attackerZone.appendChild(document.getElementById('board-' + currentPlayerIdx));
-            defenderZone.appendChild(document.getElementById('board-' + opponentIdx));
+            // --- RIGA INFERIORE: CARTE CONSUMABILI ---
+            const cardsRow = document.createElement('div');
+            cardsRow.style.cssText = "display: flex; flex-direction: row; justify-content: space-around; align-items: flex-start; width: 100%;";
 
-            // WRAPPER CARTE ATTACCANTE (Nuovo: ospiterà le carte e l'occhio)
             const attackerConsumablesWrapper = document.createElement('div');
             attackerConsumablesWrapper.id = 'pvp-attacker-consumables';
-            attackerConsumablesWrapper.style.cssText = "display: flex; gap: 10px; justify-content: center; margin-top: 15px; min-height: 200px; width: 100%;";
-            attackerZone.appendChild(attackerConsumablesWrapper);
+            attackerConsumablesWrapper.style.cssText = "display: flex; flex-direction: column; align-items: center; gap: 10px; min-height: 200px; flex: 1;";
 
-            // WRAPPER CARTE DIFENSORE
             const defenderConsumablesWrapper = document.createElement('div');
             defenderConsumablesWrapper.id = 'pvp-defender-consumables';
-            defenderConsumablesWrapper.style.cssText = "display: flex; gap: 10px; justify-content: center; margin-top: 15px; min-height: 200px; width: 100%;";
-            defenderZone.appendChild(defenderConsumablesWrapper);
+            defenderConsumablesWrapper.style.cssText = "display: flex; gap: 10px; justify-content: center; min-height: 200px; flex: 1;";
 
-            playerSection.appendChild(attackerZone);
-            playerSection.appendChild(vsZone);
-            playerSection.appendChild(defenderZone);
+            // Nel wrapper dell'attaccante le carte (e l'header col tasto occhio) verranno iniettate da renderConsumablesHand()
+            cardsRow.appendChild(attackerConsumablesWrapper);
+            cardsRow.appendChild(defenderConsumablesWrapper);
 
-            // Renderizza le carte di entrambi
+            playerSection.appendChild(boardsRow);
+            playerSection.appendChild(cardsRow);
+
+            // Renderizza le carte di entrambi nei rispettivi contenitori
             renderHiddenConsumables(opponentIdx);
-            renderConsumablesHand(); // Aggiornato per renderizzare nella nuova zona PvP
+            renderConsumablesHand(); 
 
             document.getElementById('combat-roll-btn').style.display = 'block';
             document.getElementById('combat-roll-btn').textContent = 'Lancia per colpire';
@@ -2530,8 +2534,9 @@
         }
 
         function finishPvPCombat(totalSuccesses) {
-            combatState = 'pvp_resolved'; // Verrà sovrascritto se c'è una spinta
+            combatState = 'pvp_resolved'; 
             let damageDealt = totalSuccesses;
+            let isDead = false; // Nuovo flag per tracciare la morte
             
             const outcomeOverlay = document.getElementById('ec-outcome-overlay');
             if (damageDealt > 0) {
@@ -2552,6 +2557,7 @@
             outcomeOverlay.style.display = 'flex';
 
             if (playerStats[pvpOpponentIdx].hp <= 0) {
+                isDead = true; // Segnala che il difensore è morto
                 document.getElementById(`death-overlay-${pvpOpponentIdx}`).style.display = 'flex';
                 playerStats[pvpOpponentIdx].hp = playerStats[pvpOpponentIdx].maxHp; 
                 inventories[pvpOpponentIdx] = inventories[pvpOpponentIdx].filter(item => item !== '🪙');
@@ -2565,12 +2571,14 @@
                 }
             }
 
-            if (totalSuccesses > 0) {
+            // Se è stato fatto danno E il difensore NON è morto, si procede alla spinta
+            if (totalSuccesses > 0 && !isDead) {
                 combatState = 'pvp_awaiting_push_start';
                 const nextBtn = document.getElementById('combat-next-btn');
                 nextBtn.style.display = 'block';
                 nextBtn.textContent = 'Spingi Avversario';
             } else {
+                // Se mancato, o se l'avversario è morto, si salta la spinta e si va all'evento
                 combatState = 'pvp_resolved';
                 const nextBtn = document.getElementById('combat-next-btn');
                 nextBtn.style.display = 'block';
