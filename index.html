@@ -1580,7 +1580,7 @@
                     if (u) { status = 'Usata'; cssClass = 'used-item'; bgColor = '#34495e'; pIdx = u.pIdx; }
                     else {
                         let b = burnedConsumables.find(c => c.card.id === card.id);
-                        if (b) { status = 'Bruciata'; cssClass = 'used-item'; bgColor = '#e74c3c'; pIdx = b.pIdx; }
+                        if (b) { status = 'Scartata'; cssClass = 'used-item'; bgColor = '#e74c3c'; pIdx = b.pIdx; }
                     }
                 }
 
@@ -1665,6 +1665,8 @@
         playerConsumables[pIdx].push(card);
         renderConsumablesHand();
         renderConsumableDeckUI();
+
+        updateTurnUI();
         
         // AGGIUNGI QUESTA RIGA: Avvisa il client che ha pescato una carta!
         if (isHost) broadcastGameState(); 
@@ -1700,16 +1702,48 @@
             }
 
             const hand = playerConsumables[currentPlayerIdx];
-                if (hand.length > 3) {
-                const toBurn = hand.length - 3;
-                 // Rimosso l'alert bloccante e la ricorsione infinita
-                const btn = document.getElementById('combat-next-btn');
-                 if (btn) {
-                 btn.textContent = `Brucia ${toBurn} ${toBurn === 1 ? 'carta' : 'carte'}`;
-                 btn.style.backgroundColor = '#e74c3c'; // Diventa rosso
-                btn.style.display = 'block'; // Assicura che il bottone sia visibile
-                 }
-                 // NON inserire 'return;' qui! Lascia che il codice prosegua e disegni le carte.
+            const btn = document.getElementById('combat-next-btn');
+            
+            if (hand.length > 3) {
+                const toDiscard = hand.length - 3;
+                if (btn) {
+                    btn.textContent = `Scarta ${toDiscard} ${toDiscard === 1 ? 'carta' : 'carte'}`;
+                    btn.style.backgroundColor = '#e74c3c'; // Diventa rosso
+                    btn.style.display = 'block'; // Assicura che il bottone sia visibile
+                    btn.dataset.limitState = 'over'; // Traccia che siamo oltre il limite
+                }
+                // FORZATURA: Nascondi qualsiasi altro bottone di combattimento
+                const rollBtn = document.getElementById('combat-roll-btn');
+                const evalBtn = document.getElementById('combat-eval-btn');
+                if (rollBtn) rollBtn.style.display = 'none';
+                if (evalBtn) evalBtn.style.display = 'none';
+
+            } else {
+                // Se siamo rientrati nel limite di 3 carte e il bottone era rosso, lo ripristiniamo
+                if (btn && btn.dataset.limitState === 'over') {
+                    btn.style.backgroundColor = ''; // Rimuove il rosso (torna verde di default)
+                    btn.dataset.limitState = 'ok';
+                    btn.style.display = 'none'; // Nascondiamo di default e riaccendiamo quello giusto
+                    
+                    const rollBtn = document.getElementById('combat-roll-btn');
+                    const evalBtn = document.getElementById('combat-eval-btn');
+
+                    // Ripristina ESATTAMENTE UN SINGOLO BOTTONE in base allo stato attuale del combattimento
+                    if (combatState === 'idle' || combatState === 'pvp_idle') {
+                        if (rollBtn) rollBtn.style.display = 'block';
+                    } else if (combatState === 'evaluating') {
+                        if (evalBtn) evalBtn.style.display = 'block';
+                    } else if (combatState === 'pvp_pre_push') {
+                        btn.textContent = 'Concludi Combattimento';
+                        btn.style.display = 'block';
+                    } else if (gameState === 'pvp_resolved_push' || combatState === 'pvp_resolved' || combatState === 'pvp_awaiting_push_start') {
+                        btn.textContent = combatState === 'pvp_awaiting_push_start' ? 'Spingi Avversario' : 'Prossimo Evento';
+                        btn.style.display = 'block';
+                    } else if (combatState === 'resolved') {
+                        btn.textContent = 'Termina turno';
+                        btn.style.display = 'block';
+                    }
+                }
             }
 
             hand.forEach((card) => {
@@ -1852,6 +1886,7 @@
                 // Dopo la modifica dello stato, aggiorna l'UI dell'host e trasmetti
                 updateInventoryUI();
                 renderConsumablesHand();
+                updateTurnUI(); // <--- RIGA AGGIUNTA: Forza l'aggiornamento del bottone a destra
                 broadcastGameState();
             }
         };
@@ -1901,6 +1936,9 @@
             hasBoughtConsumableThisTurn = true;
             updateInventoryUI();
             renderConsumablesHand();
+
+            updateTurnUI();
+
             if (isHost) broadcastGameState();
         }
 
@@ -2905,6 +2943,11 @@
             });
         }
         document.getElementById('combat-next-btn').addEventListener('click', () => {
+            if (playerConsumables[currentPlayerIdx].length > 3) {
+                alert("Hai troppe carte! Usa o brucia (2🪙) le carte in eccesso cliccando direttamente sui bottoni sotto le tue carte consumabili.");
+                return;
+            }
+            
             if (combatState === 'pvp_pre_push') {
                 document.getElementById('combat-next-btn').style.display = 'none';
                 finishPvPCombat(pvpTempSuccesses);
@@ -3617,6 +3660,23 @@ function updateBoardsUI() {
                 phase.textContent = "Combattimento PvP";
             }
             
+            // --- GESTIONE LIMITE CARTE IN FASE ESPLORAZIONE ---
+            const hand = playerConsumables[currentPlayerIdx];
+            if (hand && hand.length > 3 && (gameState === 'move' || gameState === 'build' || gameState === 'roll')) {
+                const toDiscard = hand.length - 3;
+                
+                // Nascondi gli altri controlli e azioni
+                confirmBtn.style.display = 'none';
+                if (pvpButton) pvpButton.style.display = 'none';
+                diceScene.style.display = 'none';
+                
+                // Forza la visualizzazione SOLO del bottone rosso di scarto
+                actionBtn.style.display = 'block';
+                actionBtn.className = "action-btn btn-red";
+                actionBtn.textContent = `Scarta ${toDiscard} ${toDiscard === 1 ? 'carta' : 'carte'}`;
+                actionBtn.disabled = false; // Cliccabile per mostrare le istruzioni
+            }
+            
             if(!isAnimating) renderPawnsAndHitboxes();
             updateDraftPoolVisibility(); updateBoardsUI(); renderConsumablesHand();
             renderConsumableDeckUI(); updateInfoBar();
@@ -3801,10 +3861,9 @@ function updateBoardsUI() {
         document.getElementById('action-btn').addEventListener('click', () => {
             if(isAnimating) return;
             
-            if (gameState === 'move' || gameState === 'build') {
+            if (gameState === 'move' || gameState === 'build' || gameState === 'roll') {
                 if (playerConsumables[currentPlayerIdx].length > 3) {
-                    alert("ATTENZIONE: Hai troppe carte consumabili in mano (massimo 3). Devi usarne o bruciarne qualcuna prima di terminare.");
-                    renderConsumablesHand(); // Mostra l'avviso
+                    alert("Hai troppe carte! Usa o brucia (2🪙) le carte in eccesso cliccando direttamente sui bottoni sotto le tue carte consumabili.");
                     return;
                 }
             }
@@ -4845,10 +4904,11 @@ function updateBoardsUI() {
                     renderConsumablesHand();
                     if (gameState === 'event') updateProvisionalCombatResult();
                     updateTurnUI();
-                } else if (action === 'burn_consumable') {
+               } else if (action === 'burn_consumable') {
                     _burnConsumable(pIdx, cardId);
                     updateInventoryUI();
                     renderConsumablesHand();
+                    updateTurnUI(); // <--- RIGA AGGIUNTA: Ripristina il bottone anche quando scarta un client
                 } else if (action === 'roll') {
                     if (pIdx === currentPlayerIdx && gameState === 'roll') {
                         rollDice();
