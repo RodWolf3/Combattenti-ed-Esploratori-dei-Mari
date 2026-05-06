@@ -419,6 +419,7 @@
             color: white; padding: 15px; border-radius: 12px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.4); width: max-content; display: flex; 
             border: 3px solid transparent; transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); position: relative;
+            margin-right: 25px; /* <--- AGGIUNTA: Crea lo spazio a destra per ospitare le carte esterne */
         }
         .player-board.active-board {
             border-color: #f1c40f !important; box-shadow: 0 10px 25px rgba(241, 196, 15, 0.5); z-index: 10;
@@ -439,6 +440,30 @@
             width: 25px; display: flex; flex-direction: column; align-items: center; 
             justify-content: space-between; border-left: 2px solid rgba(255,255,255,0.2); 
             margin-left: 15px; padding-left: 10px; 
+        }
+        .mini-cards-container {
+            position: absolute;
+            right: -30px; /* Spinge le carte fisicamente fuori, a destra della plancia */
+            top: 50%;
+            transform: translateY(-50%); /* Le mantiene centrate verticalmente */
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            justify-content: center;
+            z-index: 10;
+        }
+        .mini-hidden-card {
+            width: 20px;
+            height: 30px;
+            background: #2c3e50;
+            border: 1px solid #f1c40f;
+            border-radius: 3px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 14px;
+            color: #f1c40f;
+            font-family: 'Pirata One', cursive;
         }
         
         .board-inv {
@@ -1251,6 +1276,9 @@
         // --- 1. VARIABILI GLOBALI E STATO ---
         // Variabili P2P
         let peer = null;
+        let hostConn = null; // Memorizza la connessione diretta tra Client e Host
+        let isGameStarted = false; // Flag per capire se la partita è in corso
+        let playerRegistry = {};   // Mappa i Token dei client { "tokenXYZ": { playerIndex: 0, conn: peerConnection } }
         let hostId = null;
         let playerConns = [];
         let myPeerId = null;
@@ -1663,7 +1691,16 @@
             }
 
             const hand = playerConsumables[currentPlayerIdx];
-            if (!hand || hand.length === 0) return;
+            if (hand.length > 3) {
+                const toBurn = hand.length - 3;
+                alert(`Hai troppe carte! Devi bruciarne almeno ${toBurn} per continuare.`);
+                // Cambiamo il testo del bottone visivamente
+                const btn = document.getElementById('combat-next-btn');
+                btn.textContent = `Brucia ${toBurn} ${toBurn === 1 ? 'carta' : 'carte'}`;
+                btn.style.backgroundColor = '#e74c3c'; // Diventa rosso
+                renderConsumablesHand(); // Forza il bordo rosso sulle carte
+                return;
+            }
 
             hand.forEach((card) => {
                 const cardEl = document.createElement('div');
@@ -1677,17 +1714,23 @@
                     cardEl.style.borderColor = "#95a5a6";
                 } else {
                     let disableUse = false;
+                    // Logica di attivazione identica al Client
                     if (card.type === 'Benda' && playerStats[currentPlayerIdx].hp >= playerStats[currentPlayerIdx].maxHp) disableUse = true;
+                    
                     if (card.type === 'Magia del Tempo') {
-                        disableUse = true;
-                        if ((gameState === 'move' || gameState === 'build') && !hasPerformedActionThisTurn && !activeCellId && !isAnimating && !isWaitingExploratoryReroll) disableUse = false;
-                        if (gameState === 'event' && combatState === 'evaluating') disableUse = false;
+                        disableUse = !(((gameState === 'move' || gameState === 'build') && !hasPerformedActionThisTurn && !activeCellId && !isAnimating && !isWaitingExploratoryReroll) ||
+                                      ((gameState === 'event' || gameState === 'pvp_combat') && combatState === 'evaluating'));
                     }
                     if (card.type === 'Successo Assicurato') {
-                        disableUse = true;
-                        if (gameState === 'event' && (combatState === 'idle' || combatState === 'evaluating' || combatState === 'resolving_four')) disableUse = false;
+                        disableUse = !((gameState === 'event' || gameState === 'pvp_combat') && 
+                                      (combatState === 'idle' || combatState === 'pvp_idle' || combatState === 'evaluating' || combatState === 'resolving_four'));
                     }
-                    
+
+                    // AGGIUNTA: Controllo bordo rosso per limite carte
+                    const isOverLimit = hand.length > 3;
+                    const cardClass = isOverLimit ? 'consumable-card-ui cons-warning' : 'consumable-card-ui';
+
+                    cardEl.className = cardClass;
                     cardEl.innerHTML = `
                         <div class="cons-title">${card.type}</div>
                         <div class="cons-icon">${card.icon}</div>
@@ -1717,12 +1760,12 @@
                     usedConsumables.push({ card: hand.splice(idx, 1)[0], pIdx: pIdx });
                 }
             } else if (card.type === 'Magia del Tempo') {
-                if (!((gameState === 'move' || gameState === 'build') && !hasPerformedActionThisTurn && !activeCellId && !isAnimating && !isWaitingExploratoryReroll) && !(gameState === 'event' && combatState === 'evaluating')) {
+                if (!((gameState === 'move' || gameState === 'build') && !hasPerformedActionThisTurn && !activeCellId && !isAnimating && !isWaitingExploratoryReroll) && !((gameState === 'event' || gameState === 'pvp_combat') && combatState === 'evaluating')) {
                     canUse = false;
                 }
                 if (canUse) {
                     usedConsumables.push({ card: hand.splice(idx, 1)[0], pIdx: pIdx });
-                    if (gameState === 'event') {
+                    if (gameState === 'event' || gameState === 'pvp_combat') {
                         combatState = 'selecting_die';
                         pendingRerollCardId = id;
                         
@@ -1744,7 +1787,7 @@
                     }
                 }
             } else if (card.type === 'Successo Assicurato') {
-                if (!(gameState === 'event' && (combatState === 'idle' || combatState === 'evaluating' || combatState === 'resolving_four'))) {
+                if (!((gameState === 'event' || gameState === 'pvp_combat') && (combatState === 'idle' || combatState === 'pvp_idle' || combatState === 'evaluating' || combatState === 'resolving_four'))) {
                     canUse = false;
                 }
                 if (canUse) {
@@ -1778,7 +1821,7 @@
                 renderConsumablesHand();
                 if (gameState === 'event' && combatState !== 'idle') {
                     updateProvisionalCombatResult();
-                }
+                } // Nel PvP non chiamiamo updateProvisional perché non c'è una UI dei cuori nemici
                 updateTurnUI();
                 broadcastGameState();
             }
@@ -1925,6 +1968,11 @@
             combatState = 'idle';
             pendingFours = {1: false, 2: false};
             currentEvent = eventDeck.pop();
+            
+            const nextBtn = document.getElementById('combat-next-btn');
+            nextBtn.style.backgroundColor = ''; // Torna al colore default (verde)
+            nextBtn.textContent = 'Termina turno';
+
             updateTurnUI(); 
             if (isHost) broadcastGameState();
             
@@ -2277,10 +2325,14 @@
                     document.getElementById('combat-eval-btn').style.display = 'block';
                     renderConsumablesHand();
                 } else {
-                    // Nessuna azione possibile, risolvi subito il combattimento
-                    resolveCombatFinal();
+                    // Nessuna azione possibile, risolvi in base alla modalità!
+                    if (gameState === 'pvp_combat') {
+                        finishPvPCombatCalculation();
+                    } else {
+                        resolveCombatFinal();
+                    }
                 }
-            }
+        }
         }
 
         function performDiceRollAnimation(diceIndices, onComplete) {
@@ -2334,7 +2386,7 @@
                 document.getElementById('cube-2').classList.remove('clickable-die');
 
                 performDiceRollAnimation([dieIdx], () => {
-                    updateProvisionalCombatResult();
+                    if (gameState === 'event') updateProvisionalCombatResult();
                     pendingFours[dieIdx] = (currentDice[dieIdx - 1] === 4);
                     handleCombatStateTransition();
                 });
@@ -2446,12 +2498,20 @@
                 }
             }
 
-            document.getElementById('combat-next-btn').textContent = 'Termina turno';
-            document.getElementById('combat-next-btn').style.display = 'block';
-            renderConsumablesHand(); // Aggiorna lo stato del bottone in base alla mano
+            const nextBtn = document.getElementById('combat-next-btn');
+            nextBtn.textContent = 'Termina turno';
+            nextBtn.style.backgroundColor = ''; // Assicura che sia verde quando appare
+            nextBtn.style.display = 'block';
+            renderConsumablesHand(); 
         }
 
-        document.getElementById('combat-eval-btn').addEventListener('click', resolveCombatFinal);
+        document.getElementById('combat-eval-btn').addEventListener('click', () => {
+            if (gameState === 'pvp_combat') {
+                finishPvPCombatCalculation();
+            } else {
+                resolveCombatFinal();
+            }
+        });
 
         function startPvPCombat(opponentIdx) {
             gameState = 'pvp_combat';
@@ -2517,53 +2577,60 @@
 
         let pvpTempSuccesses = 0;
 
-        function resolvePvPCombat() {
+       function resolvePvPCombat() {
             document.getElementById('combat-roll-btn').style.display = 'none';
             combatState = 'pvp_rolling';
+            pendingFours = {1: false, 2: false}; // Resetta lo stato dei 4
             resetDiceColors();
 
             performDiceRollAnimation([1, 2], () => {
-                let successes = 0;
-                let extraCmb = getExtraCmb(currentPlayerIdx);
-                if (currentDice[0] === 1 || currentDice[0] === 6) successes++;
-                if (currentDice[1] === 1 || currentDice[1] === 6) successes++;
-                pvpTempSuccesses = successes + extraCmb;
-
-                const defenderHasConsumables = playerConsumables[pvpOpponentIdx] && playerConsumables[pvpOpponentIdx].length > 0;
-
-                if (pvpTempSuccesses > 0) {
-                    if (defenderHasConsumables) {
-                        // Steal phase
-                        combatState = 'pvp_stealing';
-                        const container = document.getElementById('pvp-defender-consumables');
-                        if (!container) { // Failsafe
-                            finishPvPCombat(pvpTempSuccesses);
-                            return;
-                        }
-                        
-                        // Chiama direttamente la funzione, il testo lo gestiamo lì dentro!
-                        renderHiddenConsumables(pvpOpponentIdx); 
-
-                    } else {
-                        // No cards to steal, show a specific button before the push phase
-                        combatState = 'pvp_pre_push';
-                        const outcomeOverlay = document.getElementById('ec-outcome-overlay');
-                        outcomeOverlay.textContent = "Successo!";
-                        outcomeOverlay.style.color = '#27ae60';
-                        outcomeOverlay.style.borderColor = '#27ae60';
-                        outcomeOverlay.style.background = 'rgba(253, 246, 227, 0.95)';
-                        outcomeOverlay.style.fontSize = '70px';
-                        outcomeOverlay.innerHTML += `<div style="font-size: 22px; margin-top: 20px; font-family: 'Cause', sans-serif;">L'avversario non ha carte da rubare.</div>`;
-                        outcomeOverlay.style.display = 'flex';
-
-                        const nextBtn = document.getElementById('combat-next-btn');
-                        nextBtn.textContent = 'Concludi Combattimento';
-                        nextBtn.style.display = 'block';
-                    }
-                } else {
-                    finishPvPCombat(pvpTempSuccesses);
-                }
+                // Segna i 4 per far intervenire la meccanica dei cuori/ritiro
+                pendingFours[1] = (currentDice[0] === 4);
+                pendingFours[2] = (currentDice[1] === 4);
+                
+                // Manda il flusso alla macchina a stati condivisa!
+                handleCombatStateTransition();
             });
+        }
+
+        function finishPvPCombatCalculation() {
+            document.getElementById('combat-eval-btn').style.display = 'none';
+            document.getElementById('four-choice-info-left').style.display = 'none';
+            document.getElementById('four-choice-info-right').style.display = 'none';
+
+            let successes = 0;
+            let extraCmb = getExtraCmb(currentPlayerIdx);
+            if (currentDice[0] === 1 || currentDice[0] === 6) successes++;
+            if (currentDice[1] === 1 || currentDice[1] === 6) successes++;
+            // Calcola i successi finali INCLUDENDO il bonus delle carte!
+            pvpTempSuccesses = successes + extraCmb + combatSuccessBonus; 
+
+            const defenderHasConsumables = playerConsumables[pvpOpponentIdx] && playerConsumables[pvpOpponentIdx].length > 0;
+
+            if (pvpTempSuccesses > 0) {
+                if (defenderHasConsumables) {
+                    combatState = 'pvp_stealing';
+                    const container = document.getElementById('pvp-defender-consumables');
+                    if (!container) { finishPvPCombat(pvpTempSuccesses); return; }
+                    renderHiddenConsumables(pvpOpponentIdx); 
+                } else {
+                    combatState = 'pvp_pre_push';
+                    const outcomeOverlay = document.getElementById('ec-outcome-overlay');
+                    outcomeOverlay.textContent = "Successo!";
+                    outcomeOverlay.style.color = '#27ae60';
+                    outcomeOverlay.style.borderColor = '#27ae60';
+                    outcomeOverlay.style.background = 'rgba(253, 246, 227, 0.95)';
+                    outcomeOverlay.style.fontSize = '70px';
+                    outcomeOverlay.innerHTML += `<div style="font-size: 22px; margin-top: 20px; font-family: 'Cause', sans-serif;">L'avversario non ha carte da rubare.</div>`;
+                    outcomeOverlay.style.display = 'flex';
+
+                    const nextBtn = document.getElementById('combat-next-btn');
+                    nextBtn.textContent = 'Concludi Combattimento';
+                    nextBtn.style.display = 'block';
+                }
+            } else {
+                finishPvPCombat(pvpTempSuccesses);
+            }
         }
 
         function renderHiddenConsumables(opponentIdx) {
@@ -3091,88 +3158,128 @@
             updateBoardsUI();
         }
 
-        function updateBoardsUI() {
-            const container = document.getElementById('boards-container');
-            if (!container) return;
-            
-            for (let i = 0; i < players.length; i++) {
-                const b = document.getElementById(`board-${i}`);
-                if (b) b.style.order = (i - currentPlayerIdx + players.length) % players.length;
-            }
+        
 
-            for (let pIdx = 0; pIdx < players.length; pIdx++) {
-                const board = document.getElementById(`board-${pIdx}`); if (!board) continue;
+function updateBoardsUI() {
+    const container = document.getElementById('boards-container');
+    if (!container) return;
+    
+    // 1. Gestione dell'ordine visivo delle plance (la plancia attiva è sempre in alto)
+    for (let i = 0; i < players.length; i++) {
+        const b = document.getElementById(`board-${i}`);
+        if (b) b.style.order = (i - currentPlayerIdx + players.length) % players.length;
+    }
 
-                const isSetupOrInit = (gameState === 'setup' || gameState === 'init');
-                const isActive = (pIdx === currentPlayerIdx);
-                // Controlla se il giocatore è il difensore nel combattimento PvP
-                const isPvPDefender = (gameState === 'pvp_combat' || gameState === 'pvp_push' || gameState === 'pvp_stealing' || gameState === 'pvp_resolved_push') && (pIdx === pvpOpponentIdx);
+    // 2. Aggiornamento dettagliato di ogni plancia
+    for (let pIdx = 0; pIdx < players.length; pIdx++) {
+        const board = document.getElementById(`board-${pIdx}`); 
+        if (!board) continue;
 
-                // Assegnazione classi corretta
-                board.classList.toggle('active-board', isActive && !isSetupOrInit);
-                board.classList.toggle('inactive-board', !isActive && !isSetupOrInit && !isPvPDefender);
-                board.classList.toggle('defender-board', isPvPDefender);
-                
-                const vpTrack = document.getElementById(`vp-track-${pIdx}`);
-                const vpDots = vpTrack.children;
-                for(let i=0; i<9; i++) {
-                    vpDots[i].innerHTML = '';
-                    vpDots[i].classList.remove('trophy-dot');
-                }
-                if (playerStats[pIdx].vp > 0 && playerStats[pIdx].vp <= 9) {
-                    const trophyDot = vpDots[playerStats[pIdx].vp - 1];
-                    if (trophyDot) { trophyDot.innerHTML = '🏆'; trophyDot.classList.add('trophy-dot'); }
-                }
+        const isSetupOrInit = (gameState === 'setup' || gameState === 'init');
+        const isActive = (pIdx === currentPlayerIdx);
+        // Verifica se il giocatore è il difensore in un combattimento PvP
+        const isPvPDefender = (gameState === 'pvp_combat' || gameState === 'pvp_push' || gameState === 'pvp_stealing' || gameState === 'pvp_resolved_push') && (pIdx === pvpOpponentIdx);
 
-                const expSquares = board.querySelectorAll('.exp-square'); expSquares.forEach((sq, i) => sq.className = i < playerStats[pIdx].exp ? 'square exp-square exp-filled' : 'square exp-square');
-                const cmbSquares = board.querySelectorAll('.cmb-square'); cmbSquares.forEach((sq, i) => sq.className = i < playerStats[pIdx].cmb ? 'square cmb-square cmb-filled' : 'square cmb-square');
-
-                for (let t = 1; t <= 3; t++) {
-                    const lock = document.getElementById(`lock-${pIdx}-${t}`); const slotTop = document.getElementById(`slot-top-${pIdx}-${t}`); const slotBottom = document.getElementById(`slot-bottom-${pIdx}-${t}`);
-                    const isUnlocked = playerStats[pIdx].exp >= t * 3 && playerStats[pIdx].cmb >= t * 3;
-                    if (isUnlocked) { 
-                        lock.classList.add('unlocked'); 
-                        
-                        slotTop.classList.add('active'); 
-                        const itemTop = playerStats[pIdx].equipped[t].top;
-                        slotTop.innerHTML = getIcon(itemTop) || ''; 
-                        if(itemTop) {
-                            slotTop.onmouseenter = (e) => showItemTooltip(e, itemTop, true);
-                            slotTop.onmousemove = moveItemTooltip;
-                            slotTop.onmouseleave = hideItemTooltip;
-                        } else {
-                            slotTop.onmouseenter = null; slotTop.onmousemove = null; slotTop.onmouseleave = null;
-                        }
-                        
-                        slotBottom.classList.add('active'); 
-                        const itemBottom = playerStats[pIdx].equipped[t].bottom;
-                        slotBottom.innerHTML = getIcon(itemBottom) || ''; 
-                        if(itemBottom) {
-                            slotBottom.onmouseenter = (e) => showItemTooltip(e, itemBottom, true);
-                            slotBottom.onmousemove = moveItemTooltip;
-                            slotBottom.onmouseleave = hideItemTooltip;
-                        } else {
-                            slotBottom.onmouseenter = null; slotBottom.onmousemove = null; slotBottom.onmouseleave = null;
-                        }
-                    } 
-                    else { 
-                        lock.classList.remove('unlocked'); 
-                        slotTop.classList.remove('active'); slotTop.innerHTML = ''; 
-                        slotTop.onmouseenter = null; slotTop.onmousemove = null; slotTop.onmouseleave = null;
-                        slotBottom.classList.remove('active'); slotBottom.innerHTML = ''; 
-                        slotBottom.onmouseenter = null; slotBottom.onmousemove = null; slotBottom.onmouseleave = null;
-                    }
-                }
-
-                const hpDots = document.getElementById(`hp-track-${pIdx}`).children;
-                for(let i=0; i<6; i++) { 
-                    hpDots[i].innerHTML = ''; 
-                    let dotHp = parseInt(hpDots[i].dataset.hp);
-                    if (dotHp === playerStats[pIdx].hp) { hpDots[i].innerHTML += `<div class="health-token" style="background: transparent; border: none; box-shadow: none; width: 24px; height: 24px; top: -6px; left: -6px;">${getHeartIconSVG()}</div>`; }
-                    if (dotHp === playerStats[pIdx].maxHp + 1) { hpDots[i].innerHTML += `<div class="health-token limit-token" title="Limite Vita Massima"></div>`; }
-                }
+        // Applica le classi per ridimensionamento e bordi (Active/Inactive/Defender)
+        board.classList.toggle('active-board', isActive && !isSetupOrInit);
+        board.classList.toggle('inactive-board', !isActive && !isSetupOrInit && !isPvPDefender);
+        board.classList.toggle('defender-board', isPvPDefender);
+        
+        // --- Aggiornamento Punti Vittoria (VP) ---
+        const vpTrack = document.getElementById(`vp-track-${pIdx}`);
+        const vpDots = vpTrack.children;
+        for(let i=0; i<9; i++) {
+            vpDots[i].innerHTML = '';
+            vpDots[i].classList.remove('trophy-dot');
+        }
+        if (playerStats[pIdx].vp > 0 && playerStats[pIdx].vp <= 9) {
+            const trophyDot = vpDots[playerStats[pIdx].vp - 1];
+            if (trophyDot) { 
+                trophyDot.innerHTML = '🏆'; 
+                trophyDot.classList.add('trophy-dot'); 
             }
         }
+
+        // --- Aggiornamento Tracciati Esperienza (EXP) e Combattimento (CMB) ---
+        const expSquares = board.querySelectorAll('.exp-square'); 
+        expSquares.forEach((sq, i) => sq.className = i < playerStats[pIdx].exp ? 'square exp-square exp-filled' : 'square exp-square');
+        
+        const cmbSquares = board.querySelectorAll('.cmb-square'); 
+        cmbSquares.forEach((sq, i) => sq.className = i < playerStats[pIdx].cmb ? 'square cmb-square cmb-filled' : 'square cmb-square');
+
+        // --- Aggiornamento Slot Abilità e Lucchetti ---
+        for (let t = 1; t <= 3; t++) {
+            const lock = document.getElementById(`lock-${pIdx}-${t}`); 
+            const slotTop = document.getElementById(`slot-top-${pIdx}-${t}`); 
+            const slotBottom = document.getElementById(`slot-bottom-${pIdx}-${t}`);
+            
+            // Uno slot è sbloccato se sia EXP che CMB hanno raggiunto il Tier (3, 6, 9)
+            const isUnlocked = playerStats[pIdx].exp >= t * 3 && playerStats[pIdx].cmb >= t * 3;
+            
+            if (isUnlocked) { 
+                lock.classList.add('unlocked'); 
+                
+                // Slot Superiore
+                slotTop.classList.add('active'); 
+                const itemTop = playerStats[pIdx].equipped[t].top;
+                slotTop.innerHTML = getIcon(itemTop) || ''; 
+                if(itemTop) {
+                    slotTop.onmouseenter = (e) => showItemTooltip(e, itemTop, true);
+                    slotTop.onmousemove = moveItemTooltip;
+                    slotTop.onmouseleave = hideItemTooltip;
+                }
+                
+                // Slot Inferiore
+                slotBottom.classList.add('active'); 
+                const itemBottom = playerStats[pIdx].equipped[t].bottom;
+                slotBottom.innerHTML = getIcon(itemBottom) || ''; 
+                if(itemBottom) {
+                    slotBottom.onmouseenter = (e) => showItemTooltip(e, itemBottom, true);
+                    slotBottom.onmousemove = moveItemTooltip;
+                    slotBottom.onmouseleave = hideItemTooltip;
+                }
+            } else { 
+                lock.classList.remove('unlocked'); 
+                slotTop.classList.remove('active'); slotTop.innerHTML = ''; 
+                slotBottom.classList.remove('active'); slotBottom.innerHTML = ''; 
+            }
+        }
+
+        // --- Aggiornamento Vita (HP) ---
+        const hpDots = document.getElementById(`hp-track-${pIdx}`).children;
+        for(let i=0; i<6; i++) { 
+            hpDots[i].innerHTML = ''; 
+            let dotHp = parseInt(hpDots[i].dataset.hp);
+            // Mostra il cuore sulla posizione attuale della vita
+            if (dotHp === playerStats[pIdx].hp) { 
+                hpDots[i].innerHTML += `<div class="health-token" style="background: transparent; border: none; box-shadow: none; width: 24px; height: 24px; top: -6px; left: -6px;">${getHeartIconSVG()}</div>`; 
+            }
+            // Mostra il limite della vita massima
+            if (dotHp === playerStats[pIdx].maxHp + 1) { 
+                hpDots[i].innerHTML += `<div class="health-token limit-token" title="Limite Vita Massima"></div>`; 
+            }
+        }
+
+        // --- AGGIUNTA: MINI CARTE PER GIOCATORI NON ATTIVI ---
+        const oldMini = board.querySelector('.mini-cards-container');
+        if (oldMini) oldMini.remove();
+
+        if (pIdx !== currentPlayerIdx) {
+            const miniContainer = document.createElement('div');
+            miniContainer.className = 'mini-cards-container';
+            
+            // Disegna un rettangolino per ogni carta posseduta dal giocatore non attivo
+            const numCards = playerConsumables[pIdx] ? playerConsumables[pIdx].length : 0;
+            for(let c=0; c < numCards; c++) {
+                const miniCard = document.createElement('div');
+                miniCard.className = 'mini-hidden-card';
+                miniCard.textContent = '?';
+                miniContainer.appendChild(miniCard);
+            }
+            board.appendChild(miniContainer);
+        }
+    }
+}
 
         function updateInventoryUI() {
             for (let pIdx = 0; pIdx < players.length; pIdx++) {
@@ -3427,7 +3534,7 @@
 
             actionBtn.style.display = 'none'; confirmBtn.style.display = 'none'; diceScene.style.display = 'none'; movesCount.style.display = 'none'; actionBtn.disabled = isAnimating;
 
-            if (gameState === 'setup') { phase.textContent = "Piazza il porto"; } 
+            if (gameState === 'setup') { phase.textContent = "Ruota il porto"; } 
             else if (gameState === 'roll') {
                 phase.textContent = "Lancio dadi"; diceScene.style.display = 'block'; actionBtn.textContent = "Tira il dado"; actionBtn.className = "action-btn btn-blue"; actionBtn.style.display = 'block';
             } else if (gameState === 'move' || gameState === 'build') {
@@ -3551,6 +3658,7 @@
         };
 
         function startGame(playerCount) {
+            isGameStarted = true; // <-- AGGIUNGI QUESTA RIGA. LOCKDOWN ATTIVATO!
             document.getElementById('game-info-bar').style.display = 'flex';
 
             // 1. Inizializza gli array e gli oggetti dei giocatori
@@ -4353,9 +4461,9 @@
         function initializeDynamicHost() {
             isHost = true;
             expectedPlayerCount = 4;
-            clientConnectionCounter = 0; // Assicura che il primo telefono diventi il Giocatore 0
+            clientConnectionCounter = 0;
+            isGameStarted = false; // Resetta in caso di ritorno al menu
             
-            // PULIZIA QR PRECEDENTE per evitare duplicati
             const qrContainer = document.getElementById('qr-code');
             qrContainer.innerHTML = ''; 
 
@@ -4369,31 +4477,90 @@
                     width: 200,
                     height: 200,
                 });
-                updatePlayerCounter(); // Forza lo 0 iniziale
+                updatePlayerCounter(); 
             });
 
             peer.on('connection', (conn) => {
-                // Ora il limite è 4 dispositivi (il PC fa solo da tabellone)
-                if (playerConns.length >= 4) {
-                    conn.on('open', () => { conn.send({ type: 'error', payload: 'Partita Piena' }); setTimeout(() => conn.close(), 500); });
-                    return;
-                }
-                const playerIndex = clientConnectionCounter++; 
-                const newPlayer = { conn: conn, playerIndex: playerIndex };
-                conn.on('open', () => {
-                    playerConns.push(newPlayer);
-                    setTimeout(() => {
-                        conn.send({ type: 'assign_player', payload: { playerIndex: playerIndex } });
-                        conn.send({ type: 'state_update', payload: JSON.stringify(getFullGameState()) });
-                        updatePlayerCounter();
-                    }, 200);
+                // Invece di assegnare subito, aspettiamo il messaggio di "Auth"
+                conn.on('data', (data) => {
+                    if (data.type === 'auth') {
+                        handleClientAuth(conn, data.payload.token);
+                    } else {
+                        handleDataReceived(data, conn.peer);
+                    }
                 });
-                conn.on('data', (data) => handleDataReceived(data, conn.peer));
+
                 conn.on('close', () => {
-                    playerConns = playerConns.filter(p => p.conn.peer !== conn.peer);
-                    updatePlayerCounter();
+                    handleClientDisconnect(conn);
                 });
+                
+                conn.on('error', (err) => console.log('Errore connessione client:', err));
             });
+        }
+
+        function handleClientAuth(conn, token) {
+            // 1. Caso Riconnessione: Il token esiste già nel registro
+            if (playerRegistry[token]) {
+                const pIdx = playerRegistry[token].playerIndex;
+                playerRegistry[token].conn = conn; // Aggiorna la connessione attiva
+                
+                // Aggiorna l'array playerConns usato per i broadcast
+                let existingPConn = playerConns.find(p => p.playerIndex === pIdx);
+                if (existingPConn) {
+                    existingPConn.conn = conn;
+                } else {
+                    playerConns.push({ conn: conn, playerIndex: pIdx });
+                }
+
+                conn.send({ type: 'assign_player', payload: { playerIndex: pIdx } });
+                
+                // Se la partita è iniziata, spara subito lo stato aggiornato al client
+                if (isGameStarted) {
+                    conn.send({ type: 'state_update', payload: JSON.stringify(getFullGameState()) });
+                } else {
+                    updatePlayerCounter();
+                }
+                console.log(`[HOST] Giocatore ${pIdx} riconnesso.`);
+                return;
+            } 
+            
+            // 2. Caso Nuovo Giocatore: Partita già iniziata? BLOCCA!
+            if (isGameStarted) {
+                conn.send({ type: 'error', payload: 'Partita in corso. Accesso negato.' });
+                setTimeout(() => conn.close(), 500);
+                return;
+            }
+
+            // 3. Caso Nuovo Giocatore: Stanza piena? BLOCCA!
+            if (Object.keys(playerRegistry).length >= 4) {
+                conn.send({ type: 'error', payload: 'La stanza è piena.' });
+                setTimeout(() => conn.close(), 500);
+                return;
+            }
+
+            // 4. Caso Nuovo Giocatore: Accettato in Lobby
+            const playerIndex = clientConnectionCounter++;
+            playerRegistry[token] = { playerIndex: playerIndex, conn: conn };
+            playerConns.push({ conn: conn, playerIndex: playerIndex });
+            
+            conn.send({ type: 'assign_player', payload: { playerIndex: playerIndex } });
+            updatePlayerCounter();
+            console.log(`[HOST] Nuovo giocatore registrato come Index ${playerIndex}.`);
+        }
+
+        function handleClientDisconnect(conn) {
+            // Rimuovi la connessione dagli attivi
+            playerConns = playerConns.filter(p => p.conn.peer !== conn.peer);
+            
+            // Imposta a null nel registro senza eliminare il posto
+            for (let token in playerRegistry) {
+                if (playerRegistry[token].conn && playerRegistry[token].conn.peer === conn.peer) {
+                    playerRegistry[token].conn = null;
+                    console.log(`[HOST] Giocatore ${playerRegistry[token].playerIndex} disconnesso temporaneamente.`);
+                    break;
+                }
+            }
+            if (!isGameStarted) updatePlayerCounter();
         }
 
         // Manteniamo la vecchia per la compatibilità con i tasti del menu Testing
@@ -4406,49 +4573,96 @@
             initializeDynamicHost(); // Avviamo il motore di rete dinamico
         }
 
+        function getOrCreateClientToken() {
+            let token = sessionStorage.getItem('ecm_client_token');
+            if (!token) {
+                token = 'client_' + Math.random().toString(36).substr(2, 9);
+                sessionStorage.setItem('ecm_client_token', token);
+            }
+            return token;
+        }
+
         function joinGame(hostId) {
             isHost = false;
             document.getElementById('initial-start-screen').innerHTML = `<h2>Connessione all'host...</h2>`;
             peer = new Peer();
+            
             peer.on('open', (id) => {
                 myPeerId = id;
-                let conn = peer.connect(hostId);
-                conn.on('open', () => {
-                    playerConns.push({conn: conn, playerIndex: null}); // pIdx will be assigned by host
-                    document.getElementById('initial-start-screen').innerHTML = `<h2>Connesso! In attesa che l'host avvii la partita...</h2>`;
-                });
-                conn.on('data', (data) => handleDataReceived(data, conn.peer));
+                connectToHostLoop(hostId); // Avvia il ciclo
+            });
+
+            peer.on('disconnected', () => {
+                peer.reconnect(); // Mantiene vivo l'oggetto peer locale
+            });
+        }
+
+        function connectToHostLoop(hostId) {
+            if (isHost) return;
+            
+            // Salviamo la connessione nella variabile globale hostConn
+            hostConn = peer.connect(hostId);
+            const clientToken = getOrCreateClientToken();
+
+            hostConn.on('open', () => {
+                // Appena aperto, invia la sua "Carta d'identità" (Auth)
+                hostConn.send({ type: 'auth', payload: { token: clientToken } });
+                
+                document.getElementById('initial-start-screen').innerHTML = `<h2>Connesso! In attesa che l'host avvii la partita...</h2>`;
+                const statusEl = document.getElementById('client-status-message');
+                if(statusEl) statusEl.textContent = "Sincronizzazione in corso...";
+            });
+
+            hostConn.on('data', (data) => handleDataReceived(data, hostConn.peer));
+            
+            hostConn.on('close', () => {
+                const statusEl = document.getElementById('client-status-message');
+                if (statusEl) {
+                    statusEl.textContent = "Disconnesso! Tentativo di riconnessione...";
+                    statusEl.style.color = '#e74c3c';
+                }
+                
+                // Tenta la riconnessione ogni 3 secondi se cade la linea
+                setTimeout(() => {
+                    if (!isHost) connectToHostLoop(hostId);
+                }, 3000);
             });
         }
 
         function broadcastGameState() {
-    if (!isHost) return;
-    
-    // Creiamo uno stato "Lite" solo con ciò che serve al client del telefono
-    const liteState = {
-        players: players,
-        currentPlayerIdx: currentPlayerIdx,
-        gameState: gameState,
-        combatState: combatState,
-        isAnimating: isAnimating,
-        hasPerformedActionThisTurn: hasPerformedActionThisTurn,
-        activeCellId: activeCellId,
-        isWaitingExploratoryReroll: isWaitingExploratoryReroll,
-        playerConsumables: playerConsumables,
-        playerStats: playerStats
-    };
+            if (!isHost) return;
+            const liteState = { /* ... */
+                players: players, currentPlayerIdx: currentPlayerIdx, gameState: gameState,
+                combatState: combatState, isAnimating: isAnimating, hasPerformedActionThisTurn: hasPerformedActionThisTurn,
+                activeCellId: activeCellId, isWaitingExploratoryReroll: isWaitingExploratoryReroll,
+                playerConsumables: playerConsumables, playerStats: playerStats
+            };
 
-    try {
-        const serializedState = JSON.stringify(liteState);
-        const dataToSend = { type: 'state_update', payload: serializedState };
-        playerConns.forEach(p => p.conn.send(dataToSend));
-    } catch (e) {
-        console.error("Errore durante la serializzazione dello stato Lite:", e);
-    }
-}
+            try {
+                const serializedState = JSON.stringify(liteState);
+                const dataToSend = { type: 'state_update', payload: serializedState };
+                
+                // INVIA SOLO SE LA CONNESSIONE ESISTE ED E' APERTA
+                playerConns.forEach(p => {
+                    if (p.conn && p.conn.open) {
+                        p.conn.send(dataToSend);
+                    }
+                });
+            } catch (e) { console.error("Errore broadcast:", e); }
+        }
 
         function sendData(data) {
-            playerConns.forEach(p => p.conn.send(data));
+            if (isHost) {
+                // L'Host fa broadcast a tutti i client connessi
+                playerConns.forEach(p => {
+                    if (p.conn && p.conn.open) p.conn.send(data);
+                });
+            } else {
+                // Il Client invia i dati direttamente e unicamente all'Host
+                if (hostConn && hostConn.open) {
+                    hostConn.send(data);
+                }
+            }
         }
 
         function setupClientUI() {
@@ -4491,11 +4705,11 @@
                     if (card.type === 'Magia del Tempo') {
                         canUse = isMyTurn && (
                             ((gameState === 'move' || gameState === 'build') && !hasPerformedActionThisTurn && !activeCellId && !isAnimating && !isWaitingExploratoryReroll) ||
-                            (gameState === 'event' && combatState === 'evaluating')
+                            ((gameState === 'event' || gameState === 'pvp_combat') && combatState === 'evaluating')
                         );
                     }
                     if (card.type === 'Successo Assicurato') {
-                        canUse = isMyTurn && gameState === 'event' && (combatState === 'idle' || combatState === 'evaluating' || combatState === 'resolving_four');
+                        canUse = isMyTurn && (gameState === 'event' || gameState === 'pvp_combat') && (combatState === 'idle' || combatState === 'pvp_idle' || combatState === 'evaluating' || combatState === 'resolving_four');
                     }
 
                     cardEl.innerHTML = `
@@ -4528,49 +4742,58 @@
             }
         }
 
-        function handleDataReceived(data, fromPeerId) {
-    if (data.type === 'assign_player' && !isHost) {
-        myPlayerIndex = data.payload.playerIndex;
-        const pConn = playerConns.find(p => p.conn.peer === fromPeerId);
-        if (pConn) pConn.playerIndex = myPlayerIndex;
-        
-        if (players.length > 0) {
-            if (document.getElementById('client-controller-overlay').style.display === 'none') {
-                setupClientUI();
-            }
-            renderClientUI();
-        }
-    }
-    else if (data.type === 'state_update' && !isHost) {
-        if (document.getElementById('client-controller-overlay').style.display === 'none') {
-            setupClientUI();
-        }
-        
-        // Decodifica il JSON ricevuto
-        let newState = data.payload;
-        if (typeof newState === 'string') {
-            try {
-                newState = JSON.parse(newState);
-            } catch (e) {
-                console.error("Errore nel parsing dello stato:", e);
+       function handleDataReceived(data, fromPeerId) {
+            // 1. Gestione messaggi di errore (Es: Partita già iniziata o stanza piena)
+            if (data.type === 'error' && !isHost) {
+                document.getElementById('initial-start-screen').innerHTML = `<h2 style="color: #e74c3c;">${data.payload}</h2>`;
+                document.getElementById('client-controller-overlay').style.display = 'none';
                 return;
             }
-        }
 
-        // Riapplica SOLO lo stato "Lite" necessario all'interfaccia
-        if (newState.players) players = newState.players;
-        if (newState.currentPlayerIdx !== undefined) currentPlayerIdx = newState.currentPlayerIdx;
-        if (newState.gameState) gameState = newState.gameState;
-        if (newState.combatState) combatState = newState.combatState;
-        if (newState.isAnimating !== undefined) isAnimating = newState.isAnimating;
-        if (newState.hasPerformedActionThisTurn !== undefined) hasPerformedActionThisTurn = newState.hasPerformedActionThisTurn;
-        if (newState.activeCellId !== undefined) activeCellId = newState.activeCellId;
-        if (newState.isWaitingExploratoryReroll !== undefined) isWaitingExploratoryReroll = newState.isWaitingExploratoryReroll;
-        if (newState.playerConsumables) playerConsumables = newState.playerConsumables;
-        if (newState.playerStats) playerStats = newState.playerStats;
+            // 2. Il Client riceve la sua identità dall'Host (avviene appena connesso)
+            if (data.type === 'assign_player' && !isHost) {
+                myPlayerIndex = data.payload.playerIndex;
+                console.log("Assegnato come giocatore numero:", myPlayerIndex);
+                // Rimane in attesa, non c'è ancora uno stato da disegnare
+                return;
+            }
 
-        renderClientUI();
-    } else if (data.type === 'action' && isHost) {
+            // 3. Il Client riceve lo stato della partita (avviene allo Start e ad ogni mossa)
+            if (data.type === 'state_update' && !isHost) {
+                // Se è il primo aggiornamento, toglie la schermata iniziale e mostra l'UI del controller
+                if (document.getElementById('client-controller-overlay').style.display === 'none') {
+                    setupClientUI();
+                }
+                
+                // Decodifica il JSON ricevuto
+                let newState = data.payload;
+                if (typeof newState === 'string') {
+                    try {
+                        newState = JSON.parse(newState);
+                    } catch (e) {
+                        console.error("Errore nel parsing dello stato:", e);
+                        return;
+                    }
+                }
+
+                // Riapplica lo stato "Lite" per sincronizzare il controller
+                if (newState.players) players = newState.players;
+                if (newState.currentPlayerIdx !== undefined) currentPlayerIdx = newState.currentPlayerIdx;
+                if (newState.gameState) gameState = newState.gameState;
+                if (newState.combatState) combatState = newState.combatState;
+                if (newState.isAnimating !== undefined) isAnimating = newState.isAnimating;
+                if (newState.hasPerformedActionThisTurn !== undefined) hasPerformedActionThisTurn = newState.hasPerformedActionThisTurn;
+                if (newState.activeCellId !== undefined) activeCellId = newState.activeCellId;
+                if (newState.isWaitingExploratoryReroll !== undefined) isWaitingExploratoryReroll = newState.isWaitingExploratoryReroll;
+                if (newState.playerConsumables) playerConsumables = newState.playerConsumables;
+                if (newState.playerStats) playerStats = newState.playerStats;
+
+                // Ora che ha le informazioni, aggiorna lo schermo
+                renderClientUI();
+            } 
+            
+            // 4. L'Host riceve un'azione da un Client
+            else if (data.type === 'action' && isHost) {
                 const { action, cardId } = data.payload;
                 const pConn = playerConns.find(p => p.conn.peer === fromPeerId);
                 if (!pConn) return;
@@ -4583,14 +4806,12 @@
 
                 if (action === 'use_consumable') {
                     _useConsumable(pIdx, cardId);
-                    // Aggiorna l'UI dell'host dopo l'azione del client
                     updateBoardsUI();
                     renderConsumablesHand();
                     if (gameState === 'event') updateProvisionalCombatResult();
                     updateTurnUI();
                 } else if (action === 'burn_consumable') {
                     _burnConsumable(pIdx, cardId);
-                    // Aggiorna l'UI dell'host dopo l'azione del client
                     updateInventoryUI();
                     renderConsumablesHand();
                 } else if (action === 'roll') {
@@ -4598,7 +4819,6 @@
                         rollDice();
                     }
                 } else if (action === 'end_turn') {
-                    // Il client preme "Termina Turno" che in realtà avvia la fase evento
                     if (pIdx === currentPlayerIdx && (gameState === 'move' || gameState === 'build') && !activeCellId && playerConsumables[pIdx].length <= 3) {
                         startEventPhase();
                     }
