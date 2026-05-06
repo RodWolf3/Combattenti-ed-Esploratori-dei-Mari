@@ -1637,14 +1637,23 @@
         }
 
         function initConsumablesDeck() {
-            let deck = [...baseConsumablesData];
+        // Il nuovo mazzo è formato dagli scarti (estraendo la proprietà 'card')
+            let deck = [];
+            usedConsumables.forEach(item => deck.push(item.card));
+            burnedConsumables.forEach(item => deck.push(item.card));
+    
+            // Se anche gli scarti sono vuoti (tutte le carte in mano), sicurezza:
+            if (deck.length === 0) deck = [...baseConsumablesData]; 
+
+            // Rimescola
             for (let i = deck.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [deck[i], deck[j]] = [deck[j], deck[i]];
-            }
-            consumablesDeck = deck;
-            usedConsumables = [];
-            burnedConsumables = [];
+    }
+    
+    consumablesDeck = deck;
+    usedConsumables = [];
+          burnedConsumables = [];
         }
 
         function drawConsumable(pIdx) {
@@ -1691,15 +1700,16 @@
             }
 
             const hand = playerConsumables[currentPlayerIdx];
-            if (hand.length > 3) {
+                if (hand.length > 3) {
                 const toBurn = hand.length - 3;
-                alert(`Hai troppe carte! Devi bruciarne almeno ${toBurn} per continuare.`);
-                // Cambiamo il testo del bottone visivamente
+                 // Rimosso l'alert bloccante e la ricorsione infinita
                 const btn = document.getElementById('combat-next-btn');
-                btn.textContent = `Brucia ${toBurn} ${toBurn === 1 ? 'carta' : 'carte'}`;
-                btn.style.backgroundColor = '#e74c3c'; // Diventa rosso
-                renderConsumablesHand(); // Forza il bordo rosso sulle carte
-                return;
+                 if (btn) {
+                 btn.textContent = `Brucia ${toBurn} ${toBurn === 1 ? 'carta' : 'carte'}`;
+                 btn.style.backgroundColor = '#e74c3c'; // Diventa rosso
+                btn.style.display = 'block'; // Assicura che il bottone sia visibile
+                 }
+                 // NON inserire 'return;' qui! Lascia che il codice prosegua e disegni le carte.
             }
 
             hand.forEach((card) => {
@@ -2309,6 +2319,10 @@
                     fourChoiceRight.innerHTML = choiceHTML;
                     fourChoiceRight.style.display = 'flex';
                 }
+                
+                // 1️⃣ PRIMA AGGIUNTA: Sincronizza i client quando esce un 4
+                if (isHost) broadcastGameState(); 
+
             } else {
                 fourChoiceLeft.style.display = 'none';
                 fourChoiceRight.style.display = 'none';
@@ -2324,6 +2338,10 @@
                     combatState = 'evaluating';
                     document.getElementById('combat-eval-btn').style.display = 'block';
                     renderConsumablesHand();
+                    
+                    // 2️⃣ SECONDA AGGIUNTA: Sincronizza i client per sbloccare le carte
+                    if (isHost) broadcastGameState(); 
+                    
                 } else {
                     // Nessuna azione possibile, risolvi in base alla modalità!
                     if (gameState === 'pvp_combat') {
@@ -2332,7 +2350,7 @@
                         resolveCombatFinal();
                     }
                 }
-        }
+            }
         }
 
         function performDiceRollAnimation(diceIndices, onComplete) {
@@ -2517,6 +2535,7 @@
             gameState = 'pvp_combat';
             combatState = 'pvp_idle';
             pvpOpponentIdx = opponentIdx;
+            combatSuccessBonus = 0;
             updateTurnUI();
 
             const overlay = document.getElementById('combat-overlay');
@@ -2939,9 +2958,16 @@
                 return;
             }
 
+            // *** SPOSTIAMO LA PULIZIA QUI, FUORI DALL'IF/ELSE ***
+            // In questo modo le schermate di morte vengono sempre spente, 
+            // a prescindere dal tipo di combattimento appena concluso.
+            for (let i = 0; i < players.length; i++) {
+                const deathOverlay = document.getElementById(`death-overlay-${i}`);
+                if (deathOverlay) deathOverlay.style.display = 'none';
+            }
+            // ****************************************************
+
             // Dopo un combattimento, questo pulsante può significare due cose:
-            // 1. Fine di un evento PvE -> Termina il turno.
-            // 2. Fine di un combattimento PvP (senza spinta) -> Pesca un nuovo evento.
             if (gameState === 'pvp_combat') {
                 // CASO 2: PvP risolto (vittoria o sconfitta), pulisci il layout e pesca un nuovo evento.
                 restoreBoardToPanel(currentPlayerIdx);
@@ -2949,25 +2975,34 @@
                     restoreBoardToPanel(pvpOpponentIdx);
                 }
 
-                // Pulisce il layout PvP. La chiamata a startEventPhase() imposterà il layout PvE.
+                // Pulisce il layout PvP.
                 document.getElementById('pvp-player-section').style.display = 'none';
                 document.getElementById('pvp-player-section').innerHTML = '';
 
                 pvpOpponentIdx = -1; // Reset PvP state
                 renderConsumablesHand();
                 startEventPhase();
+                
             } else {
                 // CASO 1: Evento PvE terminato, esci dall'overlay e finisci il turno.
+                
+                // CONTROLLO LIMITE CARTE IN PVE (Il fix spiegato nel messaggio precedente)
+                if (playerConsumables[currentPlayerIdx].length > 3) {
+                    renderConsumablesHand(); 
+                    return; 
+                }
+
                 document.getElementById('combat-overlay').style.display = 'none';
                 for (let i = 0; i < players.length; i++) {
                     const deathOverlay = document.getElementById(`death-overlay-${i}`);
                     if (deathOverlay) deathOverlay.style.display = 'none';
+                // (Il ciclo rimosso da qui ora si trova sopra all'if!)
                 }
                 restorePlayerBoards();
                 renderConsumablesHand();
                 endTurn();
             }
-        });
+        }); // Fine del listener
 
         function restoreBoardToPanel(pIdx) {
             const container = document.getElementById('boards-container');
